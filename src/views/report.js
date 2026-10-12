@@ -13,6 +13,7 @@ import {
   formatTime,
   formatDateTime,
   runWindowOf,
+  isStoppedRunRecent,
   buildLongSeries,
   LONG_CHART_MAX_DAYS,
   PUMPS,
@@ -36,6 +37,10 @@ export function mount(root, { repo, store }) {
   let longFrom = 0;
   let unwatchLong = () => {};
   const charts = [];
+  const longCharts = []; // แยกจาก charts เพื่อวาดกราฟยาวใหม่ได้โดยไม่ต้องรื้อกราฟรายงานกะ
+  let longActive = false; // listener กราฟยาวเปิดอยู่หรือไม่ (เปิดเฉพาะตอนดูกะปัจจุบัน)
+  let capturing = false; // ระหว่างสร้างรูป ห้าม render ใหม่ ไม่งั้น element ที่กำลังแคปถูกรื้อ → รูปว่าง
+  let dirty = false; // มีข้อมูลเข้ามาระหว่างสร้างรูป ต้อง render หลังเสร็จ
   const page = h('div', { class: 'stack report' });
   const longPage = h('div', { class: 'stack report' }); // กราฟยาว — แคปเป็นรูปแยกจากรายงานกะ
   root.append(page, longPage);
@@ -44,10 +49,14 @@ export function mount(root, { repo, store }) {
     charts.splice(0).forEach((c) => c.destroy());
   }
 
+  function destroyLongCharts() {
+    longCharts.splice(0).forEach((c) => c.destroy());
+  }
+
   function render() {
+    if (capturing) return void (dirty = true);
     destroyCharts();
     clear(page);
-    clear(longPage);
     const slots = shiftSlots(shiftId);
     const limits = store.get('limits');
     const live = readings.filter((r) => !r.voided);
@@ -75,7 +84,7 @@ export function mount(root, { repo, store }) {
 
     if (pumps.length === 0) {
       page.append(h('div', { class: 'card' }, h('p', { class: 'caption' }, 'ยังไม่มีข้อมูลในกะนี้')));
-      appendLongCharts(limits);
+      renderLong();
       return;
     }
 
@@ -163,14 +172,19 @@ export function mount(root, { repo, store }) {
       );
     }
     page.append(h('p', { class: 'caption center' }, `ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`));
-    appendLongCharts(limits);
+    renderLong();
   }
 
   /**
-   * กราฟยาวต่อ pump ที่กำลัง RUN ตั้งแต่เริ่มรอบเดินปัจจุบัน — อยู่ท้ายหน้า แคปเป็นรูปแยกจากรายงานกะ
+   * กราฟยาวต่อ pump ที่กำลัง RUN ตั้งแต่เริ่มรอบเดินปัจจุบัน (+ pump ที่หยุดไม่นาน) — อยู่ท้ายหน้า แคปเป็นรูปแยกจากรายงานกะ
    * (รูปรายงานกะออกแบบให้พอดี 1 จอ) · ช่วงที่ไม่มีข้อมูลเป็นช่องว่างในเส้น ไม่ใช่ 0
+   * วาดแยกจาก render() เพื่อให้ข้อมูลกราฟยาวเข้ามาแล้วไม่ต้องรื้อกราฟรายงานกะทั้งหมด
    */
-  function appendLongCharts(limits) {
+  function renderLong() {
+    if (capturing) return void (dirty = true);
+    destroyLongCharts();
+    clear(longPage);
+    const limits = store.get('limits');
     // กราฟยาวเป็นของ "รอบเดินปัจจุบัน" ไม่ผูกกับกะที่เลือก — แสดงเฉพาะตอนดูกะปัจจุบัน ไม่งั้นจะซ้ำชุดเดิมใต้ทุกกะ
     if (shiftId !== shiftOf(Date.now())) {
       longPage.append(h('p', { class: 'caption center' }, 'กราฟตั้งแต่เริ่มเดินแสดงเฉพาะกะปัจจุบัน — กด › เพื่อกลับไปกะปัจจุบัน'));
@@ -191,6 +205,8 @@ export function mount(root, { repo, store }) {
       const { start } = win;
       const s = buildLongSeries(live, p, start, win.end ?? Infinity);
       if (s.slots.length === 0) continue;
+      // pump ที่หยุดไปนานแล้วไม่ต้องแสดง (กันการ์ดเก่าค้างเต็มหน้า/เต็มรูปที่ส่ง LINE)
+      if (!running && !isStoppedRunRecent(s.slots[s.slots.length - 1], Date.now())) continue;
 
       const st3 = summarize(s.tg3603);
       const capped = start < longFrom ? ` · แสดงย้อนหลังสูงสุด ${LONG_CHART_MAX_DAYS} วัน` : '';
@@ -212,7 +228,7 @@ export function mount(root, { repo, store }) {
       if (limits.tg3603Target != null) datasets.push(flat(`Target ${limits.tg3603Target}`, limits.tg3603Target, cssVar('--crit')));
       if (limits.diffTarget != null) datasets.push(flat(`Diff ${limits.diffTarget}`, limits.diffTarget, cssVar('--text-3')));
 
-      charts.push(
+      longCharts.push(
         new Chart(canvas, {
           type: 'line',
           data: { labels: s.slots.map(formatDateTime), datasets },
@@ -245,6 +261,7 @@ export function mount(root, { repo, store }) {
   /** แปลงหน้ารายงานเป็นรูป PNG → แชร์ (LINE ฯลฯ) ถ้าอุปกรณ์รองรับ ไม่งั้นดาวน์โหลดไฟล์ */
   async function saveImage(el, fileName, title) {
     toast('กำลังสร้างรูป…');
+    capturing = true; // กัน render() รื้อ element ที่กำลังแคป (ข้อมูลสดที่เข้ามาจะ render หลังเสร็จ)
     try {
       const blobPromise = (async () => {
         const { default: html2canvas } = await import('html2canvas-pro');
@@ -256,8 +273,10 @@ export function mount(root, { repo, store }) {
       blobPromise.catch(() => {}); // กัน unhandled rejection — error จริงถูกจับตอน await ด้านล่าง
 
       // คอม: คัดลอกรูปลง clipboard ก่อน (Ctrl+V วางใน LINE PC ได้) · ส่ง Promise เข้า ClipboardItem เพื่อไม่ให้หมดสิทธิ์ user-activation ระหว่างสร้างรูป
-      const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const mobile = isTouchDevice();
+      let triedClipboard = false;
       if (!mobile && navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+        triedClipboard = true;
         try {
           await navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })]);
           toast('คัดลอกรูปแล้ว — กด Ctrl+V วางใน LINE ได้เลย', 'ok');
@@ -281,15 +300,22 @@ export function mount(root, { repo, store }) {
       document.body.append(a);
       a.click();
       a.remove();
-      toast('บันทึกรูปเป็นไฟล์แล้ว (คัดลอกลง clipboard ไม่ได้) — แนบไฟล์ใน LINE เอง', 'ok');
+      toast(triedClipboard ? 'บันทึกรูปเป็นไฟล์แล้ว (คัดลอกลง clipboard ไม่ได้) — แนบไฟล์ใน LINE เอง' : 'บันทึกรูปเป็นไฟล์แล้ว — แนบไฟล์ใน LINE เอง', 'ok');
     } catch (err) {
       console.error(err);
       toast('สร้างรูปไม่สำเร็จ — ใช้การแคปหน้าจอแทน', 'error');
+    } finally {
+      capturing = false;
+      if (dirty) {
+        dirty = false;
+        render();
+      }
     }
   }
 
   function go(dir) {
     shiftId = adjacentShift(shiftId, dir);
+    syncLong();
     watch();
   }
 
@@ -307,8 +333,22 @@ export function mount(root, { repo, store }) {
     longFrom = Date.now() - LONG_CHART_MAX_DAYS * 24 * 3600 * 1000;
     unwatchLong = repo.watchReadings(longFrom, Date.now() + 24 * 3600 * 1000, (rows) => {
       longReadings = rows;
-      render();
+      renderLong();
     });
+  }
+
+  /** เปิด listener กราฟยาว (ดึงข้อมูลย้อนหลัง 90 วัน) เฉพาะตอนดูกะปัจจุบัน — ประหยัดโควต้า Firestore */
+  function syncLong() {
+    const wanted = shiftId === shiftOf(Date.now());
+    if (wanted && !longActive) {
+      longActive = true;
+      watchLong();
+    } else if (!wanted && longActive) {
+      longActive = false;
+      unwatchLong();
+      unwatchLong = () => {};
+      longReadings = [];
+    }
   }
 
   const subs = [
@@ -319,15 +359,21 @@ export function mount(root, { repo, store }) {
       render();
     }),
   ];
+  syncLong();
   watch();
-  watchLong();
 
   return () => {
     unwatch();
     unwatchLong();
     subs.forEach((u) => u());
     destroyCharts();
+    destroyLongCharts();
   };
+}
+
+/** มือถือ/แท็บเล็ต (รวม iPadOS ที่ UA เป็น Macintosh) — ใช้เลือกว่าจะเปิดหน้าต่างแชร์หรือคัดลอกลง clipboard */
+function isTouchDevice() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 }
 
 export function describeEvent(e) {

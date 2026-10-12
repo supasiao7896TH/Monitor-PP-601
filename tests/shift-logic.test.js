@@ -7,6 +7,7 @@ import {
   slotHint,
   runStartOf,
   runWindowOf,
+  isStoppedRunRecent,
   buildLongSeries,
   formatDateTime,
   shiftOf,
@@ -333,6 +334,13 @@ describe('กราฟยาวตามรอบเดิน pump', () => {
     const readings = [rd('A', 7), rd('A', 10), rd('A', 13), rd('A', 16)];
     const s = buildLongSeries(readings, 'A', bkk(2026, 10, 12, 0), bkk(2026, 10, 12, 9, 55)); // สลับ 09:55 · slot 10:00 จดไว้ก่อน
     expect(s.slots).toEqual([bkk(2026, 10, 12, 7), bkk(2026, 10, 12, 10)]);
+  });
+
+  it('isStoppedRunRecent: pump ที่หยุดแล้วแสดงเฉพาะที่ค่าสุดท้ายไม่เก่าเกิน 14 วัน', () => {
+    const now = bkk(2026, 10, 12, 12);
+    expect(isStoppedRunRecent(bkk(2026, 10, 1, 10), now)).toBe(true); // 11 วัน
+    expect(isStoppedRunRecent(bkk(2026, 9, 28, 12), now)).toBe(true); // 14 วันพอดี
+    expect(isStoppedRunRecent(bkk(2026, 9, 28, 10), now)).toBe(false); // เกิน 14 วัน
   });
 
   it('formatDateTime เป็น dd/MM HH:mm เวลาไทย', () => {

@@ -138,6 +138,7 @@ export function mount(root, { repo, store }) {
       slot = next;
       watch();
       renderAll();
+      toast(`เลื่อนเป็น slot ${formatTime(next)} ตามเวลาปัจจุบัน`, 'warn'); // บอกชัดๆ กันเลื่อนเงียบตอนกำลังอ่านค่าจาก DCS
       return;
     }
     updateHint();

@@ -303,6 +303,13 @@ export function buildLongSeries(readings, pump, fromMs, toMs = Infinity) {
   return out;
 }
 
+/** pump ที่หยุดแล้วจะแสดงกราฟยาวต่อเมื่อค่าสุดท้ายที่จดไม่เก่าเกินกี่วัน */
+export const STOPPED_CHART_MAX_DAYS = 14;
+
+export function isStoppedRunRecent(lastReadingMs, nowMs) {
+  return nowMs - lastReadingMs <= STOPPED_CHART_MAX_DAYS * 24 * HOUR;
+}
+
 /** 'dd/MM HH:mm' (เวลาไทย) */
 export function formatDateTime(ms) {
   const p = bkkParts(ms);
