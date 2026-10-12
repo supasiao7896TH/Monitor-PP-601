@@ -3,6 +3,8 @@ import {
   SLOT_HOURS,
   slotKey,
   nearestSlot,
+  isSlotOpen,
+  slotHint,
   shiftOf,
   shiftRange,
   shiftSlots,
@@ -39,6 +41,27 @@ describe('slot และกะ', () => {
 
   it('nearestSlot ข้ามเที่ยงคืน: 23:50 → 01:00 วันถัดไป', () => {
     expect(nearestSlot(bkk(2026, 10, 12, 23, 50))).toBe(bkk(2026, 10, 13, 1));
+  });
+
+  it('isSlotOpen: จด slot ได้ก่อนเวลาไม่เกิน 120 นาที และย้อนหลังได้เสมอ', () => {
+    const s19 = bkk(2026, 10, 12, 19);
+    expect(isSlotOpen(s19, bkk(2026, 10, 12, 18, 47))).toBe(true); // ก่อน 13 นาที
+    expect(isSlotOpen(s19, bkk(2026, 10, 12, 17, 10))).toBe(true); // เคสจริงที่พี่ A เจอ
+    expect(isSlotOpen(s19, bkk(2026, 10, 12, 17, 0))).toBe(true); // ขอบ 120 นาทีพอดี
+    expect(isSlotOpen(s19, bkk(2026, 10, 12, 16, 59))).toBe(false);
+    expect(isSlotOpen(s19, bkk(2026, 10, 12, 19, 45))).toBe(true); // หลังเวลา
+  });
+
+  it('slotHint: บอกว่าเวลาจริงจะถูกจดเป็น slot ไหน', () => {
+    const s19 = bkk(2026, 10, 12, 19);
+    expect(slotHint(s19, bkk(2026, 10, 12, 18, 47))).toBe('ตอนนี้ 18:47 → จดเป็น slot 19:00 (ก่อนเวลา 13 นาที)');
+    expect(slotHint(s19, bkk(2026, 10, 12, 19, 5))).toBe('ตอนนี้ 19:05 → จดเป็น slot 19:00 (หลังเวลา 5 นาที)');
+    expect(slotHint(s19, bkk(2026, 10, 12, 19, 0))).toBe('ตอนนี้ 19:00 → จดเป็น slot 19:00 (ตรงเวลา)');
+  });
+
+  it('slotHint: slot ที่ยังไม่เปิดต้องบอกเวลาที่จะเปิด', () => {
+    const s19 = bkk(2026, 10, 12, 19);
+    expect(slotHint(s19, bkk(2026, 10, 12, 16, 40))).toBe('slot 19:00 ยังไม่เปิดให้จด — เปิดเวลา 17:00');
   });
 
   it('slotKey เป็น YYYYMMDDHHmm เวลาไทย', () => {

@@ -1,6 +1,8 @@
 import { h, clear, toast, copyText, flagChip } from '../modules/ui-renderer.js';
 import {
   nearestSlot,
+  isSlotOpen,
+  slotHint,
   shiftOf,
   shiftRange,
   shiftSlots,
@@ -32,6 +34,9 @@ function slotChoices(now) {
 
 export function mount(root, { repo, store }) {
   let slot = nearestSlot(Date.now());
+  let manualSlot = false; // ผู้ใช้เลือก slot เอง → ไม่เลื่อนตามเวลาจริงอีก
+  let openSig = '';
+  const hintEl = h('p', { class: 'caption', id: 'rec-slot-hint', role: 'status' });
   let readings = [];
   let unwatch = () => {};
   const subs = [];
@@ -96,6 +101,7 @@ export function mount(root, { repo, store }) {
         class: 'input',
         onchange: (e) => {
           slot = Number(e.target.value);
+          manualSlot = true;
           touched.clear();
           watch();
           renderAll();
@@ -108,14 +114,39 @@ export function mount(root, { repo, store }) {
       h('h2', {}, shiftLabel(sid)),
       h('div', { class: 'slot-chips', role: 'group', 'aria-label': 'slot ของกะนี้' }, slots.map((s) => {
         const done = need.length > 0 && need.every((p) => readings.some((r) => r.pump === p && r.slotTime === s && !r.voided));
-        const future = s > now + 90 * 60 * 1000;
+        const future = !isSlotOpen(s, now);
         const cls = ['slot-chip', done ? 'slot-done' : '', future ? 'slot-future' : '', s === slot ? 'slot-current' : ''].join(' ');
-        return h('button', { class: cls, type: 'button', disabled: future, onclick: () => ((slot = s), touched.clear(), watch(), renderAll()) }, `${done ? '✓ ' : ''}${formatTime(s)}`);
+        return h('button', { class: cls, type: 'button', disabled: future, onclick: () => ((slot = s), (manualSlot = true), touched.clear(), watch(), renderAll()) }, `${done ? '✓ ' : ''}${formatTime(s)}`);
       })),
+      hintEl,
       h('label', { for: 'rec-slot' }, 'เวลา slot ที่จะจด'),
       select,
     );
+    openSig = slots.map((s) => isSlotOpen(s, now)).join();
+    updateHint();
   }
+
+  function updateHint() {
+    hintEl.textContent = slotHint(slot, Date.now());
+  }
+
+  /** ทุกนาที/เมื่อกลับมาที่หน้านี้: ถ้ายังไม่ได้เลือก slot เอง และยังไม่ได้พิมพ์อะไร → เลื่อน slot ตามเวลาจริง */
+  function tick() {
+    const now = Date.now();
+    const next = nearestSlot(now);
+    if (!manualSlot && touched.size === 0 && next !== slot) {
+      slot = next;
+      watch();
+      renderAll();
+      return;
+    }
+    updateHint();
+    // ปุ่ม slot เปิด/ปิดตามเวลา — วาดใหม่เฉพาะเมื่อสถานะเปลี่ยน (ไม่ปิด dropdown ที่กำลังเปิดอยู่ทุกนาที)
+    if (shiftSlots(shiftOf(slot)).map((s) => isSlotOpen(s, now)).join() !== openSig) renderShift();
+  }
+  const timer = setInterval(tick, 30 * 1000);
+  const onVisible = () => document.visibilityState === 'visible' && tick();
+  document.addEventListener('visibilitychange', onVisible);
 
   // ---------- ฟอร์ม ----------
   const inputs = {}; // pump -> { a, b, note, diffOut }
@@ -283,6 +314,8 @@ export function mount(root, { repo, store }) {
   watch();
 
   return () => {
+    clearInterval(timer);
+    document.removeEventListener('visibilitychange', onVisible);
     unwatch();
     subs.forEach((u) => u());
   };

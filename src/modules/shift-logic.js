@@ -57,6 +57,25 @@ export function formatTime(ms) {
   return `${pad(p.h)}:${pad(p.mi)}`;
 }
 
+/** จด slot ล่วงหน้าได้ไม่เกินกี่นาทีก่อนถึงเวลา slot (ย้อนหลังจดได้เสมอ) */
+export const SLOT_LEAD_MIN = 120;
+
+/** slot นี้เปิดให้จดตอนนี้หรือยัง */
+export function isSlotOpen(slotMs, nowMs) {
+  return slotMs - nowMs <= SLOT_LEAD_MIN * 60 * 1000;
+}
+
+/** ข้อความบอกว่าเวลาจริงตอนนี้จะถูกจดเป็น slot ไหน (หรือ slot นี้จะเปิดเมื่อไร) */
+export function slotHint(slotMs, nowMs) {
+  if (!isSlotOpen(slotMs, nowMs)) {
+    return `slot ${formatTime(slotMs)} ยังไม่เปิดให้จด — เปิดเวลา ${formatTime(slotMs - SLOT_LEAD_MIN * 60 * 1000)}`;
+  }
+  const diffMin = Math.round((slotMs - nowMs) / 60000);
+  const span = (m) => (m >= 60 ? `${Math.floor(m / 60)} ชม.${m % 60 ? ` ${m % 60} นาที` : ''}` : `${m} นาที`);
+  const rel = diffMin === 0 ? 'ตรงเวลา' : diffMin > 0 ? `ก่อนเวลา ${span(diffMin)}` : `หลังเวลา ${span(-diffMin)}`;
+  return `ตอนนี้ ${formatTime(nowMs)} → จดเป็น slot ${formatTime(slotMs)} (${rel})`;
+}
+
 const dateStr = (y, mo, d) => `${y}-${pad(mo)}-${pad(d)}`;
 
 /** id ของกะ เช่น '2026-10-12_D' · กะดึกตั้งชื่อตามวันที่เริ่มกะ */
