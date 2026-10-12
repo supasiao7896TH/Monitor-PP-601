@@ -1,9 +1,9 @@
 export const APP_VERSION = '0.1.0';
 
-/** ค่าเริ่มต้นของเกณฑ์ — ⚠️ ทิศทางของ TG-3603 ยังรอยืนยันกับหน้างาน แก้ได้ในหน้า "ตั้งค่า" */
+/** ค่าเริ่มต้นของเกณฑ์ — TG-3603 ต้อง "มากกว่า" 70 (พี่ A ยืนยัน 2026-10-12) · Diff ≥ 20 ยังเป็นข้อสันนิษฐาน */
 export const DEFAULT_LIMITS = Object.freeze({
   tg3603Target: 70,
-  tg3603Direction: 'below',
+  tg3603Direction: 'above',
   diffTarget: 20,
   diffDirection: 'above',
 });

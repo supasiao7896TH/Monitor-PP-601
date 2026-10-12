@@ -1,5 +1,5 @@
 import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Legend, Tooltip } from 'chart.js';
-import { h, clear, fmt } from '../modules/ui-renderer.js';
+import { h, clear, fmt, toast } from '../modules/ui-renderer.js';
 import {
   shiftOf,
   shiftRange,
@@ -53,6 +53,14 @@ export function mount(root, { repo, store }) {
         h('button', { class: 'btn btn-outline btn-sm', type: 'button', 'aria-label': 'กะก่อนหน้า', onclick: () => go(-1) }, '‹'),
         h('div', { class: 'center' }, h('h2', {}, 'PP-601 รายงานกะ'), h('p', { class: 'caption' }, shiftLabel(shiftId))),
         h('button', { class: 'btn btn-outline btn-sm', type: 'button', 'aria-label': 'กะถัดไป', onclick: () => go(1) }, '›'),
+      ),
+    );
+
+    page.append(
+      h(
+        'div',
+        { 'data-html2canvas-ignore': 'true' },
+        h('button', { class: 'btn btn-soft btn-sm btn-block', type: 'button', onclick: saveImage }, 'บันทึกรายงานเป็นรูป / ส่ง LINE'),
       ),
     );
 
@@ -144,7 +152,35 @@ export function mount(root, { repo, store }) {
         ),
       );
     }
-    page.append(h('p', { class: 'caption center' }, `ออกรายงาน ${new Date().toLocaleString('th-TH')} · เกณฑ์: ${limitText(limits)}`));
+    page.append(h('p', { class: 'caption center' }, `ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`));
+  }
+
+  /** แปลงหน้ารายงานเป็นรูป PNG → แชร์ (LINE ฯลฯ) ถ้าอุปกรณ์รองรับ ไม่งั้นดาวน์โหลดไฟล์ */
+  async function saveImage() {
+    toast('กำลังสร้างรูป…');
+    try {
+      const { default: html2canvas } = await import('html2canvas-pro');
+      const canvas = await html2canvas(page, { backgroundColor: cssVar('--bg'), scale: 2, useCORS: false, logging: false });
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('toBlob failed');
+      const file = new File([blob], `PP601-report-${shiftId}.png`, { type: 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: `PP-601 ${shiftLabel(shiftId)}` });
+          return;
+        } catch (err) {
+          if (err?.name === 'AbortError') return; // ผู้ใช้ปิดหน้าต่างแชร์เอง
+        }
+      }
+      const a = h('a', { href: URL.createObjectURL(blob), download: file.name });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      toast('บันทึกรูปแล้ว', 'ok');
+    } catch (err) {
+      console.error(err);
+      toast('สร้างรูปไม่สำเร็จ — ใช้การแคปหน้าจอแทน', 'error');
+    }
   }
 
   function go(dir) {

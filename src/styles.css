@@ -603,3 +603,7 @@ label {
     transition: none !important;
   }
 }
+
+.btn-block {
+  width: 100%;
+}

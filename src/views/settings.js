@@ -15,7 +15,7 @@ export function mount(root, { repo, store, applyTheme }) {
 
   const name = h('input', { id: 'st-name', class: 'input', maxLength: 40, value: store.get('name') ?? '', oninput: (e) => store.set('name', e.target.value.trim()) });
   const t3603 = h('input', { id: 'st-t3603', class: 'input num', inputMode: 'decimal', value: limits.tg3603Target ?? '' });
-  const d3603 = h('select', { id: 'st-d3603', class: 'input' }, [['below', 'ไม่เกิน (≤)'], ['above', 'ไม่ต่ำกว่า (≥)']].map(([v, l]) => h('option', { value: v, selected: limits.tg3603Direction === v }, l)));
+  const d3603 = h('select', { id: 'st-d3603', class: 'input' }, [['above', 'ไม่ต่ำกว่า (≥)'], ['below', 'ไม่เกิน (≤)']].map(([v, l]) => h('option', { value: v, selected: limits.tg3603Direction === v }, l)));
   const tDiff = h('input', { id: 'st-tdiff', class: 'input num', inputMode: 'decimal', value: limits.diffTarget ?? '' });
   const dDiff = h('select', { id: 'st-ddiff', class: 'input' }, [['above', 'ไม่ต่ำกว่า (≥)'], ['below', 'ไม่เกิน (≤)']].map(([v, l]) => h('option', { value: v, selected: limits.diffDirection === v }, l)));
   const limErr = h('p', { class: 'form-error', role: 'alert' });
@@ -68,7 +68,7 @@ export function mount(root, { repo, store, applyTheme }) {
         'section',
         { class: 'card stack' },
         h('h2', {}, 'เกณฑ์เตือน'),
-        h('p', { class: 'caption warn-text' }, '⚠️ ทิศทางของ TG-3603 ยังไม่ได้ยืนยันกับหน้างาน — ตรวจก่อนใช้เป็นเกณฑ์จริง เว้นค่าว่างไว้ถ้ายังไม่ต้องการให้ติดธง'),
+        h('p', { class: 'caption warn-text' }, 'ค่าเริ่มต้น: TG-3603 ต้องมากกว่า 70 (ยืนยันแล้ว) · Diff ต่ำกว่า 20 เป็นข้อสันนิษฐานที่ยังไม่ได้ยืนยันกับหน้างาน · เว้นค่าว่างถ้าไม่ต้องการให้ติดธง'),
         h('label', { for: 'st-t3603' }, 'TG-3603 (oil out) target °C'),
         t3603,
         h('label', { for: 'st-d3603' }, 'TG-3603 ควรอยู่'),

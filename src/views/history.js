@@ -5,7 +5,7 @@ import { openSwitchDialog } from '../modules/dialogs.js';
 import { describeEvent } from './report.js';
 
 const fmtDateTime = (ms) =>
-  new Date(ms).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
+  new Date(ms).toLocaleString('th-TH-u-ca-gregory', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
 
 export function mount(root, { repo, store }) {
   let events = [];
