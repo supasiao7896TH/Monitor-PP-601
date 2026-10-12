@@ -6,6 +6,7 @@ import {
   isSlotOpen,
   slotHint,
   runStartOf,
+  runWindowOf,
   buildLongSeries,
   formatDateTime,
   shiftOf,
@@ -299,6 +300,39 @@ describe('กราฟยาวตามรอบเดิน pump', () => {
 
   it('buildLongSeries: ไม่มีข้อมูล → ซีรีส์ว่าง', () => {
     expect(buildLongSeries([], 'A', 0)).toEqual({ slots: [], tg3602: [], tg3603: [], diff: [] });
+  });
+
+  it('runWindowOf: pump ที่กำลัง RUN → เริ่มจากจุดเริ่มรอบ ปลายเปิด', () => {
+    const events = [{ type: 'switch', start: 'A', stop: 'B', at: bkk(2026, 10, 8, 9) }];
+    expect(runWindowOf('A', events, [], true)).toEqual({ start: bkk(2026, 10, 8, 9), end: null });
+    expect(runWindowOf('A', [], [], true)).toBeNull();
+  });
+
+  it('runWindowOf: pump ที่หยุดแล้ว → รอบเดินก่อนหยุด (เริ่มตอนสลับเข้า จบตอนสลับออก)', () => {
+    const events = [
+      { type: 'switch', start: 'A', stop: 'B', at: bkk(2026, 10, 2, 9) },
+      { type: 'switch', start: 'B', stop: 'A', at: bkk(2026, 10, 12, 9) },
+    ];
+    expect(runWindowOf('A', events, [], false)).toEqual({ start: bkk(2026, 10, 2, 9), end: bkk(2026, 10, 12, 9) });
+  });
+
+  it('runWindowOf: หยุดแล้วแต่ไม่มี event เริ่ม → ใช้ค่าที่จดแรกสุดก่อนหยุด · ไม่มีค่าเลย = null', () => {
+    const events = [{ type: 'switch', start: 'B', stop: 'A', at: bkk(2026, 10, 12, 9) }];
+    const readings = [rd('A', 4, 100, 80, 5), rd('A', 7, 100, 80, 11), rd('A', 13, 100, 80, 13)]; // ตัวหลังสุดจดหลังหยุดไปไกล
+    expect(runWindowOf('A', events, readings, false)).toEqual({ start: bkk(2026, 10, 5, 4), end: bkk(2026, 10, 12, 9) });
+    expect(runWindowOf('A', events, [], false)).toBeNull();
+  });
+
+  it('runWindowOf: ไม่ RUN แต่ไม่มี event หยุด → ปลายเปิด (จบที่ค่าสุดท้ายที่จด)', () => {
+    expect(runWindowOf('A', [], [rd('A', 7, 100, 80, 5), rd('A', 10, 100, 80, 6)], false)).toEqual({ start: bkk(2026, 10, 5, 7), end: null });
+    const events = [{ type: 'switch', start: 'A', stop: 'B', at: bkk(2026, 10, 8, 9) }];
+    expect(runWindowOf('A', events, [], false)).toEqual({ start: bkk(2026, 10, 8, 9), end: null });
+  });
+
+  it('buildLongSeries: toMs ตัดค่าหลังหยุด แต่ slot ที่จดก่อนเวลาสลับเล็กน้อยยังรวม', () => {
+    const readings = [rd('A', 7), rd('A', 10), rd('A', 13), rd('A', 16)];
+    const s = buildLongSeries(readings, 'A', bkk(2026, 10, 12, 0), bkk(2026, 10, 12, 9, 55)); // สลับ 09:55 · slot 10:00 จดไว้ก่อน
+    expect(s.slots).toEqual([bkk(2026, 10, 12, 7), bkk(2026, 10, 12, 10)]);
   });
 
   it('formatDateTime เป็น dd/MM HH:mm เวลาไทย', () => {

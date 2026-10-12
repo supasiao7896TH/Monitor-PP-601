@@ -245,22 +245,49 @@ const RUN_START_TOLERANCE_MS = 90 * 60 * 1000;
  * ถ้า pump ถูกสั่งหยุดทีหลัง/ไม่มี event → ใช้ค่าที่จดตัวแรกหลังจุดนั้น · ไม่มีข้อมูลเลย = null
  */
 export function runStartOf(pump, events, readings) {
-  const sw = events.filter((e) => e.type === 'switch');
-  const lastStart = Math.max(-Infinity, ...sw.filter((e) => e.start === pump).map((e) => e.at));
-  const lastStop = Math.max(-Infinity, ...sw.filter((e) => e.stop === pump).map((e) => e.at));
+  const { lastStart, lastStop } = lastSwitchTimes(pump, events);
   if (lastStart > -Infinity && lastStart >= lastStop) return lastStart;
   const mine = readings.filter((r) => r.pump === pump && !r.voided && r.slotTime > lastStop).map((r) => r.slotTime);
   return mine.length > 0 ? Math.min(...mine) : null;
+}
+
+/** เวลา event สลับล่าสุดที่ให้ pump นี้เริ่มเดิน / หยุด (-Infinity = ไม่เคยมี) */
+function lastSwitchTimes(pump, events) {
+  const sw = events.filter((e) => e.type === 'switch');
+  return {
+    lastStart: Math.max(-Infinity, ...sw.filter((e) => e.start === pump).map((e) => e.at)),
+    lastStop: Math.max(-Infinity, ...sw.filter((e) => e.stop === pump).map((e) => e.at)),
+  };
+}
+
+/**
+ * ช่วงเวลาของรอบเดินที่จะวาดกราฟยาว → { start, end } (end = null คือปลายเปิด จบที่ค่าสุดท้ายที่จด) หรือ null ถ้าไม่มีข้อมูล
+ * - กำลัง RUN: รอบปัจจุบัน (runStartOf)
+ * - หยุดแล้ว: รอบเดินล่าสุดก่อนหยุด — เริ่มตอนสลับเข้า จบตอนสลับออก
+ */
+export function runWindowOf(pump, events, readings, running) {
+  if (running) {
+    const start = runStartOf(pump, events, readings);
+    return start == null ? null : { start, end: null };
+  }
+  const { lastStart, lastStop } = lastSwitchTimes(pump, events);
+  if (lastStart > -Infinity && lastStart >= lastStop) return { start: lastStart, end: null };
+  if (lastStart > -Infinity) return { start: lastStart, end: lastStop };
+  const mine = readings
+    .filter((r) => r.pump === pump && !r.voided && (lastStop === -Infinity || r.slotTime <= lastStop + RUN_START_TOLERANCE_MS))
+    .map((r) => r.slotTime);
+  if (mine.length === 0) return null;
+  return { start: Math.min(...mine), end: lastStop === -Infinity ? null : lastStop };
 }
 
 /**
  * ซีรีส์กราฟยาวตั้งแต่ fromMs ถึงค่าสุดท้ายที่จด — ทุก slot 3 ชม. ต่อเนื่อง
  * slot ที่ไม่มีข้อมูลเป็น null เพื่อให้เส้นขาด (ห้ามเป็น 0)
  */
-export function buildLongSeries(readings, pump, fromMs) {
+export function buildLongSeries(readings, pump, fromMs, toMs = Infinity) {
   const bySlot = new Map();
   for (const r of readings) {
-    if (r.pump === pump && !r.voided && r.slotTime >= fromMs - RUN_START_TOLERANCE_MS) bySlot.set(r.slotTime, r);
+    if (r.pump === pump && !r.voided && r.slotTime >= fromMs - RUN_START_TOLERANCE_MS && r.slotTime <= toMs + RUN_START_TOLERANCE_MS) bySlot.set(r.slotTime, r);
   }
   const out = { slots: [], tg3602: [], tg3603: [], diff: [] };
   if (bySlot.size === 0) return out;

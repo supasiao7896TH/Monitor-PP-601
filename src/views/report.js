@@ -12,7 +12,7 @@ import {
   calcDiff,
   formatTime,
   formatDateTime,
-  runStartOf,
+  runWindowOf,
   buildLongSeries,
   LONG_CHART_MAX_DAYS,
   PUMPS,
@@ -182,21 +182,26 @@ export function mount(root, { repo, store }) {
     const shot = h('div', { class: 'stack report' });
     longPage.append(shot);
     let count = 0;
-    for (const p of PUMPS.filter((x) => status[x] === 'RUN')) {
-      const start = runStartOf(p, events, live);
-      if (start == null) continue;
-      const s = buildLongSeries(live, p, start);
+    // pump ที่กำลัง RUN ก่อน แล้วตามด้วยตัวที่หยุดแล้ว (แสดงรอบเดินล่าสุดก่อนหยุด)
+    const order = [...PUMPS.filter((x) => status[x] === 'RUN'), ...PUMPS.filter((x) => status[x] !== 'RUN')];
+    for (const p of order) {
+      const running = status[p] === 'RUN';
+      const win = runWindowOf(p, events, live, running);
+      if (win == null) continue;
+      const { start } = win;
+      const s = buildLongSeries(live, p, start, win.end ?? Infinity);
       if (s.slots.length === 0) continue;
 
       const st3 = summarize(s.tg3603);
       const capped = start < longFrom ? ` · แสดงย้อนหลังสูงสุด ${LONG_CHART_MAX_DAYS} วัน` : '';
+      const stopped = running ? '' : win.end != null ? ` · หยุดแล้ว ${formatDateTime(win.end)}` : ' · ไม่ได้เดินแล้ว';
       const canvas = h('canvas', { role: 'img', 'aria-label': `กราฟยาวอุณหภูมิ PP-601${p} ตั้งแต่เริ่มเดิน` });
       if (count++ === 0) shot.append(h('h2', { class: 'center' }, 'PP-601 กราฟตั้งแต่เริ่มเดิน'));
       shot.append(
         h(
           'div',
           { class: 'card chart-card' },
-          h('div', { class: 'chart-title' }, h('h3', {}, `PP-601${p} · ตั้งแต่เริ่มเดิน`), h('span', { class: 'caption num' }, `เริ่ม ${formatDateTime(start)} · ${st3.count} ค่า · 3603 สูงสุด ${fmt(st3.max)} · เฉลี่ย ${fmt(st3.avg)}${capped}`)),
+          h('div', { class: 'chart-title' }, h('h3', {}, `PP-601${p} · ${running ? 'ตั้งแต่เริ่มเดิน' : 'รอบเดินก่อนหยุด'}`), h('span', { class: 'caption num' }, `เริ่ม ${formatDateTime(start)}${stopped} · ${st3.count} ค่า · 3603 สูงสุด ${fmt(st3.max)} · เฉลี่ย ${fmt(st3.avg)}${capped}`)),
           h('div', { class: 'chart-box' }, canvas),
         ),
       );
