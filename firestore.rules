@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function authed() { return request.auth != null; }
+    function str(v, max) { return v is string && v.size() <= max; }
+    function temp(v) { return v is number && v >= 0 && v <= 300; }
+    function numOrNull(v) { return v == null || v is number; }
+    function state(v) { return v in ['RUN', 'STANDBY', 'CLEANING']; }
+    function dir(v) { return v in ['above', 'below']; }
+
+    // ค่า temp: 1 doc ต่อ pump ต่อ slot — ทีมแก้ไขได้ (uid เปลี่ยนทุกครั้งที่เปิดแอป) แต่ห้ามลบ
+    function validReading(d) {
+      return d.keys().hasAll(['pump', 'slotTime', 'tg3602', 'tg3603', 'recordedBy'])
+        && d.keys().hasOnly(['pump', 'slotTime', 'shiftId', 'tg3602', 'tg3603', 'note',
+                             'recordedBy', 'voided', 'voidedBy', 'updatedAt'])
+        && d.pump in ['A', 'B', 'C']
+        && d.slotTime is number
+        && temp(d.tg3602) && temp(d.tg3603)
+        && str(d.recordedBy, 40)
+        && str(d.get('note', ''), 200)
+        && str(d.get('voidedBy', ''), 40)
+        && d.get('voided', false) is bool;
+    }
+
+    match /readings/{id} {
+      allow read: if authed();
+      allow create, update: if authed()
+        && id.matches('^[ABC]_[0-9]{12}$')
+        && validReading(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /events/{id} {
+      allow read: if authed();
+      allow create, update: if authed()
+        && request.resource.data.type in ['switch', 'cleaning']
+        && request.resource.data.at is number
+        && str(request.resource.data.by, 40)
+        && str(request.resource.data.get('reason', ''), 120)
+        && str(request.resource.data.get('note', ''), 200)
+        && request.resource.data.keys().hasOnly(['type', 'at', 'stop', 'start', 'before', 'after',
+             'reason', 'by', 'pump', 'target', 'endAt', 'note', 'endedBy', 'createdAt']);
+      allow delete: if false;
+    }
+
+    match /pumpStatus/current {
+      allow read: if authed();
+      allow create, update: if authed()
+        && state(request.resource.data.A) && state(request.resource.data.B) && state(request.resource.data.C)
+        && str(request.resource.data.by, 40)
+        && request.resource.data.keys().hasOnly(['A', 'B', 'C', 'updatedAt', 'by']);
+      allow delete: if false;
+    }
+
+    match /config/limits {
+      allow read: if authed();
+      allow create, update: if authed()
+        && numOrNull(request.resource.data.tg3603Target) && numOrNull(request.resource.data.diffTarget)
+        && dir(request.resource.data.tg3603Direction) && dir(request.resource.data.diffDirection)
+        && request.resource.data.keys().hasOnly(['tg3603Target', 'tg3603Direction', 'diffTarget', 'diffDirection', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // deny-by-default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

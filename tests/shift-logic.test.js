@@ -1,0 +1,230 @@
+import { describe, it, expect } from 'vitest';
+import {
+  SLOT_HOURS,
+  slotKey,
+  nearestSlot,
+  shiftOf,
+  shiftRange,
+  shiftSlots,
+  readingId,
+  calcDiff,
+  validateReading,
+  evaluate,
+  validateStatus,
+  recordablePumps,
+  applySwitch,
+  startCleaning,
+  finishCleaning,
+  formatLineMessage,
+  buildSeries,
+  summarize,
+  escapeCsv,
+} from '../src/modules/shift-logic.js';
+
+// helper: เวลาไทย (UTC+7) → epoch ms ไม่ขึ้นกับ timezone ของเครื่องที่รันเทสต์
+const bkk = (y, mo, d, h = 0, mi = 0) => Date.UTC(y, mo - 1, d, h - 7, mi);
+
+const LIMITS = { tg3603Target: 70, tg3603Direction: 'below', diffTarget: 20, diffDirection: 'above' };
+
+describe('slot และกะ', () => {
+  it('slot ทุก 3 ชม. ตาม Excel: 22,01,04,07,10,13,16,19', () => {
+    expect([...SLOT_HOURS].sort((a, b) => a - b)).toEqual([1, 4, 7, 10, 13, 16, 19, 22]);
+  });
+
+  it('nearestSlot ปัดเวลาจริงเข้า slot ที่ใกล้ที่สุด', () => {
+    expect(nearestSlot(bkk(2026, 10, 12, 10, 20))).toBe(bkk(2026, 10, 12, 10));
+    expect(nearestSlot(bkk(2026, 10, 12, 9, 40))).toBe(bkk(2026, 10, 12, 10));
+    expect(nearestSlot(bkk(2026, 10, 12, 12, 0))).toBe(bkk(2026, 10, 12, 13));
+  });
+
+  it('nearestSlot ข้ามเที่ยงคืน: 23:50 → 01:00 วันถัดไป', () => {
+    expect(nearestSlot(bkk(2026, 10, 12, 23, 50))).toBe(bkk(2026, 10, 13, 1));
+  });
+
+  it('slotKey เป็น YYYYMMDDHHmm เวลาไทย', () => {
+    expect(slotKey(bkk(2026, 10, 12, 1))).toBe('202610120100');
+  });
+
+  it('shiftOf: กะเช้า 07:30–19:30 มี slot 10,13,16,19', () => {
+    for (const h of [10, 13, 16, 19]) expect(shiftOf(bkk(2026, 10, 12, h))).toBe('2026-10-12_D');
+  });
+
+  it('shiftOf: slot 07:00 เป็นของกะดึกที่กำลังจะออก (07:30)', () => {
+    expect(shiftOf(bkk(2026, 10, 12, 7))).toBe('2026-10-11_N');
+  });
+
+  it('shiftOf: กะดึกข้ามวัน — 22:00 และ 01:00 อยู่กะเดียวกัน ตั้งชื่อตามวันที่เริ่มกะ', () => {
+    expect(shiftOf(bkk(2026, 10, 11, 22))).toBe('2026-10-11_N');
+    expect(shiftOf(bkk(2026, 10, 12, 1))).toBe('2026-10-11_N');
+    expect(shiftOf(bkk(2026, 10, 12, 4))).toBe('2026-10-11_N');
+  });
+
+  it('shiftRange ให้ช่วงเวลากะ', () => {
+    expect(shiftRange('2026-10-12_D')).toEqual({ start: bkk(2026, 10, 12, 7, 30), end: bkk(2026, 10, 12, 19, 30) });
+    expect(shiftRange('2026-10-11_N')).toEqual({ start: bkk(2026, 10, 11, 19, 30), end: bkk(2026, 10, 12, 7, 30) });
+  });
+
+  it('shiftSlots ให้ 4 slot เรียงตามเวลา (กะดึก: 22,01,04,07)', () => {
+    expect(shiftSlots('2026-10-11_N')).toEqual([
+      bkk(2026, 10, 11, 22),
+      bkk(2026, 10, 12, 1),
+      bkk(2026, 10, 12, 4),
+      bkk(2026, 10, 12, 7),
+    ]);
+    expect(shiftSlots('2026-10-12_D')).toHaveLength(4);
+  });
+
+  it('readingId ผูก pump + slot จึงจดซ้ำ slot เดิมได้ id เดิม (ทับ ไม่เกิด doc ซ้ำ)', () => {
+    const t = bkk(2026, 10, 12, 10);
+    expect(readingId('A', t)).toBe('A_202610121000');
+    expect(readingId('A', t)).toBe(readingId('A', t));
+    expect(readingId('C', t)).not.toBe(readingId('A', t));
+  });
+});
+
+describe('ค่า temp', () => {
+  it('calcDiff = TG-3602 − TG-3603 (108/65 → 43)', () => {
+    expect(calcDiff(108, 65)).toBe(43);
+    expect(calcDiff(128, 105)).toBe(23);
+  });
+
+  it('calcDiff ปัดทศนิยมไม่ให้เพี้ยนแบบ floating point', () => {
+    expect(calcDiff(100.3, 60.1)).toBe(40.2);
+  });
+
+  it('calcDiff คืน null ถ้าขาดค่า', () => {
+    expect(calcDiff(null, 65)).toBeNull();
+    expect(calcDiff(108, undefined)).toBeNull();
+  });
+
+  it('validateReading รับค่าปกติ รวมสตริงตัวเลขจากฟอร์ม', () => {
+    expect(validateReading({ tg3602: '108', tg3603: '65' })).toEqual({ ok: true, tg3602: 108, tg3603: 65 });
+  });
+
+  it('validateReading ปฏิเสธค่าว่าง / ไม่ใช่ตัวเลข / นอกช่วง 0–300', () => {
+    expect(validateReading({ tg3602: '', tg3603: '65' }).ok).toBe(false);
+    expect(validateReading({ tg3602: 'abc', tg3603: '65' }).ok).toBe(false);
+    expect(validateReading({ tg3602: '108', tg3603: '-5' }).ok).toBe(false);
+    expect(validateReading({ tg3602: '1080', tg3603: '65' }).ok).toBe(false);
+  });
+
+  it('evaluate: TG-3603 ทิศ below → เกิน target เป็น alarm, ไม่เกินเป็น ok', () => {
+    expect(evaluate({ tg3602: 108, tg3603: 65 }, LIMITS).tg3603).toBe('ok');
+    expect(evaluate({ tg3602: 128, tg3603: 105 }, LIMITS).tg3603).toBe('alarm');
+  });
+
+  it('evaluate: ถ้ากลับทิศเป็น above ผลต้องกลับด้วย', () => {
+    const flipped = { ...LIMITS, tg3603Direction: 'above' };
+    expect(evaluate({ tg3602: 108, tg3603: 65 }, flipped).tg3603).toBe('alarm');
+    expect(evaluate({ tg3602: 128, tg3603: 105 }, flipped).tg3603).toBe('ok');
+  });
+
+  it('evaluate: Diff ทิศ above → ต่ำกว่า 20 เป็น alarm, เท่ากับ 20 ผ่าน', () => {
+    expect(evaluate({ tg3602: 100, tg3603: 85 }, LIMITS).diff).toBe('alarm');
+    expect(evaluate({ tg3602: 100, tg3603: 80 }, LIMITS).diff).toBe('ok');
+  });
+
+  it('evaluate: ไม่มี limit (null) → ไม่ติดธง (ไม่เดาเกณฑ์)', () => {
+    const none = { tg3603Target: null, tg3603Direction: 'below', diffTarget: null, diffDirection: 'above' };
+    expect(evaluate({ tg3602: 300, tg3603: 299 }, none)).toEqual({ tg3603: 'none', diff: 'none' });
+  });
+});
+
+describe('สถานะ pump และการสลับ', () => {
+  const base = { A: 'RUN', B: 'STANDBY', C: 'RUN' };
+
+  it('validateStatus: ต้อง RUN 2 ตัว และตัวที่เหลือ STANDBY หรือ CLEANING', () => {
+    expect(validateStatus(base).ok).toBe(true);
+    expect(validateStatus({ A: 'RUN', B: 'CLEANING', C: 'RUN' }).ok).toBe(true);
+    expect(validateStatus({ A: 'RUN', B: 'RUN', C: 'RUN' }).ok).toBe(false);
+    expect(validateStatus({ A: 'RUN', B: 'STANDBY', C: 'STANDBY' }).ok).toBe(false);
+    expect(validateStatus({ A: 'RUN', B: 'XYZ', C: 'RUN' }).ok).toBe(false);
+  });
+
+  it('recordablePumps คืนเฉพาะ pump ที่ RUN', () => {
+    expect(recordablePumps(base)).toEqual(['A', 'C']);
+    expect(recordablePumps({ A: 'STANDBY', B: 'RUN', C: 'RUN' })).toEqual(['B', 'C']);
+  });
+
+  it('applySwitch: หยุด C เดิน B → A,B RUN / C STANDBY', () => {
+    expect(applySwitch(base, { stop: 'C', start: 'B' })).toEqual({
+      ok: true,
+      status: { A: 'RUN', B: 'RUN', C: 'STANDBY' },
+    });
+  });
+
+  it('applySwitch ปฏิเสธ: หยุด pump ที่ไม่ได้ RUN / เดิน pump ที่ไม่ได้ STANDBY', () => {
+    expect(applySwitch(base, { stop: 'B', start: 'A' }).ok).toBe(false);
+    expect(applySwitch(base, { stop: 'A', start: 'C' }).ok).toBe(false);
+  });
+
+  it('applySwitch ปฏิเสธถ้าตัวที่ 3 ติด CLEANING (ไม่มี standby ให้สลับ)', () => {
+    expect(applySwitch({ A: 'RUN', B: 'CLEANING', C: 'RUN' }, { stop: 'C', start: 'B' }).ok).toBe(false);
+  });
+
+  it('applySwitch ไม่แก้ object เดิม', () => {
+    const s = { ...base };
+    applySwitch(s, { stop: 'C', start: 'B' });
+    expect(s).toEqual(base);
+  });
+
+  it('startCleaning: ทำได้เฉพาะ pump ที่ STANDBY → CLEANING', () => {
+    expect(startCleaning(base, 'B')).toEqual({ ok: true, status: { A: 'RUN', B: 'CLEANING', C: 'RUN' } });
+    expect(startCleaning(base, 'A').ok).toBe(false);
+  });
+
+  it('finishCleaning: CLEANING → STANDBY, pump อื่นปฏิเสธ', () => {
+    const s = { A: 'RUN', B: 'CLEANING', C: 'RUN' };
+    expect(finishCleaning(s, 'B')).toEqual({ ok: true, status: base });
+    expect(finishCleaning(base, 'B').ok).toBe(false);
+  });
+});
+
+describe('รายงาน', () => {
+  it('formatLineMessage ตรงรูปแบบข้อความ LINE เดิมของ F/O', () => {
+    const msg = formatLineMessage(bkk(2026, 10, 11, 22), [
+      { pump: 'A', tg3602: 108, tg3603: 65 },
+      { pump: 'C', tg3602: 128, tg3603: 105 },
+    ]);
+    expect(msg).toBe('22:00\nA\nTemp gauge = 108/65\n\nC\nTemp gauge = 128/105');
+  });
+
+  it('formatLineMessage ข้าม reading ที่ voided', () => {
+    const msg = formatLineMessage(bkk(2026, 10, 12, 1), [
+      { pump: 'A', tg3602: 108, tg3603: 65 },
+      { pump: 'C', tg3602: 1, tg3603: 1, voided: true },
+    ]);
+    expect(msg).toBe('01:00\nA\nTemp gauge = 108/65');
+  });
+
+  it('buildSeries: slot ที่ไม่มีข้อมูล (pump standby) = null ไม่ใช่ 0', () => {
+    const slots = [bkk(2026, 10, 12, 10), bkk(2026, 10, 12, 13)];
+    const rows = [{ pump: 'A', slotTime: slots[0], tg3602: 108, tg3603: 65 }];
+    const s = buildSeries(slots, rows, 'A');
+    expect(s.tg3602).toEqual([108, null]);
+    expect(s.tg3603).toEqual([65, null]);
+    expect(s.diff).toEqual([43, null]);
+  });
+
+  it('buildSeries ไม่เอา reading ที่ voided และไม่ปนข้าม pump', () => {
+    const slots = [bkk(2026, 10, 12, 10)];
+    const rows = [
+      { pump: 'A', slotTime: slots[0], tg3602: 108, tg3603: 65, voided: true },
+      { pump: 'C', slotTime: slots[0], tg3602: 128, tg3603: 105 },
+    ];
+    expect(buildSeries(slots, rows, 'A').tg3602).toEqual([null]);
+    expect(buildSeries(slots, rows, 'C').tg3602).toEqual([128]);
+  });
+
+  it('summarize: max/avg ไม่นับ null', () => {
+    expect(summarize([100, null, 110, 120])).toEqual({ max: 120, avg: 110, count: 3 });
+    expect(summarize([null, null])).toEqual({ max: null, avg: null, count: 0 });
+  });
+
+  it('escapeCsv กันเครื่องหมายคำพูด/คอมมา/บรรทัดใหม่ และกัน CSV injection', () => {
+    expect(escapeCsv('a,b')).toBe('"a,b"');
+    expect(escapeCsv('say "hi"')).toBe('"say ""hi"""');
+    expect(escapeCsv('=SUM(A1)')).toBe("\"'=SUM(A1)\"");
+    expect(escapeCsv(42)).toBe('42');
+  });
+});
