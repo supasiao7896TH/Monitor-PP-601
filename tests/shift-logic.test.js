@@ -5,6 +5,9 @@ import {
   nearestSlot,
   isSlotOpen,
   slotHint,
+  runStartOf,
+  buildLongSeries,
+  formatDateTime,
   shiftOf,
   shiftRange,
   shiftSlots,
@@ -249,5 +252,56 @@ describe('รายงาน', () => {
     expect(escapeCsv('say "hi"')).toBe('"say ""hi"""');
     expect(escapeCsv('=SUM(A1)')).toBe("\"'=SUM(A1)\"");
     expect(escapeCsv(42)).toBe('42');
+  });
+});
+
+describe('กราฟยาวตามรอบเดิน pump', () => {
+  const rd = (pump, h, tg3602 = 100, tg3603 = 80, day = 12) => ({ pump, slotTime: bkk(2026, 10, day, h), tg3602, tg3603, voided: false });
+
+  it('runStartOf: ใช้เวลาที่สลับให้ pump นี้เดินล่าสุด', () => {
+    const events = [
+      { type: 'switch', start: 'A', stop: 'B', at: bkk(2026, 10, 8, 9, 15) },
+      { type: 'switch', start: 'A', stop: 'C', at: bkk(2026, 10, 11, 16, 20) },
+    ];
+    expect(runStartOf('A', events, [rd('A', 10, 100, 80, 7)])).toBe(bkk(2026, 10, 11, 16, 20));
+  });
+
+  it('runStartOf: เคยถูกสลับให้หยุดทีหลัง → เริ่มนับจากค่าแรกหลังหยุด', () => {
+    const events = [
+      { type: 'switch', start: 'A', stop: 'B', at: bkk(2026, 10, 8, 9) },
+      { type: 'switch', start: 'C', stop: 'A', at: bkk(2026, 10, 10, 9) },
+    ];
+    const readings = [rd('A', 4, 100, 80, 9), rd('A', 13, 100, 80, 11), rd('A', 16, 100, 80, 11)];
+    expect(runStartOf('A', events, readings)).toBe(bkk(2026, 10, 11, 13));
+    expect(runStartOf('A', events, [rd('A', 4, 100, 80, 9)])).toBeNull();
+  });
+
+  it('runStartOf: ไม่มี event เลย → ค่าที่จดครั้งแรก (ไม่นับที่ยกเลิก) · ไม่มีข้อมูล → null', () => {
+    const readings = [{ ...rd('A', 1, 100, 80, 6), voided: true }, rd('A', 4, 100, 80, 7), rd('A', 7, 100, 80, 7), rd('B', 1, 100, 80, 3)];
+    expect(runStartOf('A', [], readings)).toBe(bkk(2026, 10, 7, 4));
+    expect(runStartOf('C', [], readings)).toBeNull();
+  });
+
+  it('buildLongSeries: slot ที่ขาดเป็น null (ไม่ใช่ 0) และไม่ต่อท้ายด้วยช่องว่างหลังค่าสุดท้าย', () => {
+    const readings = [rd('A', 16, 110, 70), rd('A', 22, 112, 68), rd('B', 19, 1, 1)];
+    const s = buildLongSeries(readings, 'A', bkk(2026, 10, 12, 16));
+    expect(s.slots).toEqual([bkk(2026, 10, 12, 16), bkk(2026, 10, 12, 19), bkk(2026, 10, 12, 22)]);
+    expect(s.tg3602).toEqual([110, null, 112]);
+    expect(s.tg3603).toEqual([70, null, 68]);
+    expect(s.diff).toEqual([40, null, 44]);
+  });
+
+  it('buildLongSeries: slot ก่อนจุดเริ่มเกิน 90 นาทีไม่ถูกรวม แต่ slot ที่จดคาบเกี่ยวถูกรวม', () => {
+    const readings = [rd('A', 13), rd('A', 16), rd('A', 19)];
+    const s = buildLongSeries(readings, 'A', bkk(2026, 10, 12, 16, 20)); // สลับ 16:20 · slot 16:00 อยู่ภายใน 90 นาที
+    expect(s.slots).toEqual([bkk(2026, 10, 12, 16), bkk(2026, 10, 12, 19)]);
+  });
+
+  it('buildLongSeries: ไม่มีข้อมูล → ซีรีส์ว่าง', () => {
+    expect(buildLongSeries([], 'A', 0)).toEqual({ slots: [], tg3602: [], tg3603: [], diff: [] });
+  });
+
+  it('formatDateTime เป็น dd/MM HH:mm เวลาไทย', () => {
+    expect(formatDateTime(bkk(2026, 10, 7, 22))).toBe('07/10 22:00');
   });
 });

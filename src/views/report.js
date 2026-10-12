@@ -11,6 +11,10 @@ import {
   evaluate,
   calcDiff,
   formatTime,
+  formatDateTime,
+  runStartOf,
+  buildLongSeries,
+  LONG_CHART_MAX_DAYS,
   PUMPS,
 } from '../modules/shift-logic.js';
 import { TARGET_LABEL } from '../modules/app-config.js';
@@ -28,9 +32,13 @@ export function mount(root, { repo, store }) {
   let readings = [];
   let events = [];
   let unwatch = () => {};
+  let longReadings = []; // ข้อมูลย้อนหลังสำหรับกราฟยาว (ไม่ผูกกับกะที่เลือก)
+  let longFrom = 0;
+  let unwatchLong = () => {};
   const charts = [];
   const page = h('div', { class: 'stack report' });
-  root.append(page);
+  const longPage = h('div', { class: 'stack report' }); // กราฟยาว — แคปเป็นรูปแยกจากรายงานกะ
+  root.append(page, longPage);
 
   function destroyCharts() {
     charts.splice(0).forEach((c) => c.destroy());
@@ -39,6 +47,7 @@ export function mount(root, { repo, store }) {
   function render() {
     destroyCharts();
     clear(page);
+    clear(longPage);
     const slots = shiftSlots(shiftId);
     const limits = store.get('limits');
     const live = readings.filter((r) => !r.voided);
@@ -60,12 +69,13 @@ export function mount(root, { repo, store }) {
       h(
         'div',
         { 'data-html2canvas-ignore': 'true' },
-        h('button', { class: 'btn btn-soft btn-sm btn-block', type: 'button', onclick: saveImage }, 'บันทึกรายงานเป็นรูป / ส่ง LINE'),
+        h('button', { class: 'btn btn-soft btn-sm btn-block', type: 'button', onclick: () => saveImage(page, `PP601-report-${shiftId}.png`, `PP-601 ${shiftLabel(shiftId)}`) }, 'บันทึกรายงานเป็นรูป / ส่ง LINE'),
       ),
     );
 
     if (pumps.length === 0) {
       page.append(h('div', { class: 'card' }, h('p', { class: 'caption' }, 'ยังไม่มีข้อมูลในกะนี้')));
+      appendLongCharts(limits);
       return;
     }
 
@@ -153,20 +163,110 @@ export function mount(root, { repo, store }) {
       );
     }
     page.append(h('p', { class: 'caption center' }, `ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`));
+    appendLongCharts(limits);
+  }
+
+  /**
+   * กราฟยาวต่อ pump ที่กำลัง RUN ตั้งแต่เริ่มรอบเดินปัจจุบัน — อยู่ท้ายหน้า แคปเป็นรูปแยกจากรายงานกะ
+   * (รูปรายงานกะออกแบบให้พอดี 1 จอ) · ช่วงที่ไม่มีข้อมูลเป็นช่องว่างในเส้น ไม่ใช่ 0
+   */
+  function appendLongCharts(limits) {
+    // กราฟยาวเป็นของ "รอบเดินปัจจุบัน" ไม่ผูกกับกะที่เลือก — แสดงเฉพาะตอนดูกะปัจจุบัน ไม่งั้นจะซ้ำชุดเดิมใต้ทุกกะ
+    if (shiftId !== shiftOf(Date.now())) {
+      longPage.append(h('p', { class: 'caption center' }, 'กราฟตั้งแต่เริ่มเดินแสดงเฉพาะกะปัจจุบัน — กด › เพื่อกลับไปกะปัจจุบัน'));
+      return;
+    }
+    const status = store.get('status');
+    const live = longReadings.filter((r) => !r.voided);
+    // shot = ส่วนที่ถูกแคปเป็นรูป · ต้องต่อเข้า DOM ก่อนสร้าง Chart เพื่อให้วัดขนาดได้
+    const shot = h('div', { class: 'stack report' });
+    longPage.append(shot);
+    let count = 0;
+    for (const p of PUMPS.filter((x) => status[x] === 'RUN')) {
+      const start = runStartOf(p, events, live);
+      if (start == null) continue;
+      const s = buildLongSeries(live, p, start);
+      if (s.slots.length === 0) continue;
+
+      const st3 = summarize(s.tg3603);
+      const capped = start < longFrom ? ` · แสดงย้อนหลังสูงสุด ${LONG_CHART_MAX_DAYS} วัน` : '';
+      const canvas = h('canvas', { role: 'img', 'aria-label': `กราฟยาวอุณหภูมิ PP-601${p} ตั้งแต่เริ่มเดิน` });
+      if (count++ === 0) shot.append(h('h2', { class: 'center' }, 'PP-601 กราฟตั้งแต่เริ่มเดิน'));
+      shot.append(
+        h(
+          'div',
+          { class: 'card chart-card' },
+          h('div', { class: 'chart-title' }, h('h3', {}, `PP-601${p} · ตั้งแต่เริ่มเดิน`), h('span', { class: 'caption num' }, `เริ่ม ${formatDateTime(start)} · ${st3.count} ค่า · 3603 สูงสุด ${fmt(st3.max)} · เฉลี่ย ${fmt(st3.avg)}${capped}`)),
+          h('div', { class: 'chart-box' }, canvas),
+        ),
+      );
+
+      const line = (label, data, color) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 1.5, pointRadius: 0, pointHitRadius: 8, tension: 0.15, spanGaps: false });
+      const flat = (label, value, color) => ({ label, data: s.slots.map(() => value), borderColor: color, borderWidth: 1, borderDash: [5, 4], pointRadius: 0, pointHitRadius: 0 });
+      const datasets = [line('TG-3602', s.tg3602, cssVar('--accent')), line('TG-3603', s.tg3603, cssVar('--accent-2')), line('Diff', s.diff, cssVar('--text-2'))];
+      if (limits.tg3603Target != null) datasets.push(flat(`Target ${limits.tg3603Target}`, limits.tg3603Target, cssVar('--crit')));
+      if (limits.diffTarget != null) datasets.push(flat(`Diff ${limits.diffTarget}`, limits.diffTarget, cssVar('--text-3')));
+
+      charts.push(
+        new Chart(canvas, {
+          type: 'line',
+          data: { labels: s.slots.map(formatDateTime), datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              y: { beginAtZero: true, ticks: { color: cssVar('--text-3') }, grid: { color: cssVar('--border') } },
+              x: { ticks: { color: cssVar('--text-3'), maxTicksLimit: 6, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+            },
+            plugins: { legend: { labels: { color: cssVar('--text-2'), usePointStyle: true, boxWidth: 8, font: { size: 11 }, filter: (item) => item.datasetIndex < 3 } } },
+          },
+        }),
+      );
+    }
+
+    if (count === 0) return void shot.remove();
+    shot.append(h('p', { class: 'caption center' }, `ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`));
+    longPage.prepend(
+      h(
+        'div',
+        {},
+        h('button', { class: 'btn btn-soft btn-sm btn-block', type: 'button', onclick: () => saveImage(shot, `PP601-longchart-${formatDateTime(Date.now()).slice(0, 5).replace('/', '-')}.png`, 'PP-601 กราฟตั้งแต่เริ่มเดิน') }, 'บันทึกกราฟยาวเป็นรูป / ส่ง LINE'),
+      ),
+    );
   }
 
   /** แปลงหน้ารายงานเป็นรูป PNG → แชร์ (LINE ฯลฯ) ถ้าอุปกรณ์รองรับ ไม่งั้นดาวน์โหลดไฟล์ */
-  async function saveImage() {
+  async function saveImage(el, fileName, title) {
     toast('กำลังสร้างรูป…');
     try {
-      const { default: html2canvas } = await import('html2canvas-pro');
-      const canvas = await html2canvas(page, { backgroundColor: cssVar('--bg'), scale: 2, useCORS: false, logging: false });
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-      if (!blob) throw new Error('toBlob failed');
-      const file = new File([blob], `PP601-report-${shiftId}.png`, { type: 'image/png' });
-      if (navigator.canShare?.({ files: [file] })) {
+      const blobPromise = (async () => {
+        const { default: html2canvas } = await import('html2canvas-pro');
+        const canvas = await html2canvas(el, { backgroundColor: cssVar('--bg'), scale: 2, useCORS: false, logging: false });
+        const made = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        if (!made) throw new Error('toBlob failed');
+        return made;
+      })();
+      blobPromise.catch(() => {}); // กัน unhandled rejection — error จริงถูกจับตอน await ด้านล่าง
+
+      // คอม: คัดลอกรูปลง clipboard ก่อน (Ctrl+V วางใน LINE PC ได้) · ส่ง Promise เข้า ClipboardItem เพื่อไม่ให้หมดสิทธิ์ user-activation ระหว่างสร้างรูป
+      const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (!mobile && navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
         try {
-          await navigator.share({ files: [file], title: `PP-601 ${shiftLabel(shiftId)}` });
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })]);
+          toast('คัดลอกรูปแล้ว — กด Ctrl+V วางใน LINE ได้เลย', 'ok');
+          return;
+        } catch (err) {
+          console.warn('clipboard image failed, fallback to download', err);
+        }
+      }
+
+      const blob = await blobPromise;
+      const file = new File([blob], fileName, { type: 'image/png' });
+      if (mobile && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title });
           return;
         } catch (err) {
           if (err?.name === 'AbortError') return; // ผู้ใช้ปิดหน้าต่างแชร์เอง
@@ -176,7 +276,7 @@ export function mount(root, { repo, store }) {
       document.body.append(a);
       a.click();
       a.remove();
-      toast('บันทึกรูปแล้ว', 'ok');
+      toast('บันทึกรูปเป็นไฟล์แล้ว (คัดลอกลง clipboard ไม่ได้) — แนบไฟล์ใน LINE เอง', 'ok');
     } catch (err) {
       console.error(err);
       toast('สร้างรูปไม่สำเร็จ — ใช้การแคปหน้าจอแทน', 'error');
@@ -197,17 +297,29 @@ export function mount(root, { repo, store }) {
     });
   }
 
+  function watchLong() {
+    unwatchLong();
+    longFrom = Date.now() - LONG_CHART_MAX_DAYS * 24 * 3600 * 1000;
+    unwatchLong = repo.watchReadings(longFrom, Date.now() + 24 * 3600 * 1000, (rows) => {
+      longReadings = rows;
+      render();
+    });
+  }
+
   const subs = [
     store.on('limits', render),
+    store.on('status', render),
     repo.watchEvents((rows) => {
       events = rows;
       render();
     }),
   ];
   watch();
+  watchLong();
 
   return () => {
     unwatch();
+    unwatchLong();
     subs.forEach((u) => u());
     destroyCharts();
   };

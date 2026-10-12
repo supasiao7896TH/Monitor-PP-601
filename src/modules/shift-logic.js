@@ -235,6 +235,53 @@ export function buildSeries(slots, readings, pump) {
   return { tg3602, tg3603, diff };
 }
 
+/** ดึงข้อมูลย้อนหลังสูงสุดกี่วันสำหรับกราฟยาว (คุมโควต้า Firestore) */
+export const LONG_CHART_MAX_DAYS = 90;
+/** slot ที่จดคาบเกี่ยวก่อนเวลาสลับ pump (จดช้า) ยังนับเป็นรอบเดินนี้ได้ไม่เกินเท่านี้ */
+const RUN_START_TOLERANCE_MS = 90 * 60 * 1000;
+
+/**
+ * เวลาเริ่มรอบเดินปัจจุบันของ pump (ms) — ใช้ event 'switch' ล่าสุดที่ให้ pump นี้เดิน
+ * ถ้า pump ถูกสั่งหยุดทีหลัง/ไม่มี event → ใช้ค่าที่จดตัวแรกหลังจุดนั้น · ไม่มีข้อมูลเลย = null
+ */
+export function runStartOf(pump, events, readings) {
+  const sw = events.filter((e) => e.type === 'switch');
+  const lastStart = Math.max(-Infinity, ...sw.filter((e) => e.start === pump).map((e) => e.at));
+  const lastStop = Math.max(-Infinity, ...sw.filter((e) => e.stop === pump).map((e) => e.at));
+  if (lastStart > -Infinity && lastStart >= lastStop) return lastStart;
+  const mine = readings.filter((r) => r.pump === pump && !r.voided && r.slotTime > lastStop).map((r) => r.slotTime);
+  return mine.length > 0 ? Math.min(...mine) : null;
+}
+
+/**
+ * ซีรีส์กราฟยาวตั้งแต่ fromMs ถึงค่าสุดท้ายที่จด — ทุก slot 3 ชม. ต่อเนื่อง
+ * slot ที่ไม่มีข้อมูลเป็น null เพื่อให้เส้นขาด (ห้ามเป็น 0)
+ */
+export function buildLongSeries(readings, pump, fromMs) {
+  const bySlot = new Map();
+  for (const r of readings) {
+    if (r.pump === pump && !r.voided && r.slotTime >= fromMs - RUN_START_TOLERANCE_MS) bySlot.set(r.slotTime, r);
+  }
+  const out = { slots: [], tg3602: [], tg3603: [], diff: [] };
+  if (bySlot.size === 0) return out;
+  const keys = [...bySlot.keys()];
+  const last = Math.max(...keys);
+  for (let t = Math.min(...keys); t <= last; t += 3 * HOUR) {
+    const r = bySlot.get(t);
+    out.slots.push(t);
+    out.tg3602.push(r ? r.tg3602 : null);
+    out.tg3603.push(r ? r.tg3603 : null);
+    out.diff.push(r ? calcDiff(r.tg3602, r.tg3603) : null);
+  }
+  return out;
+}
+
+/** 'dd/MM HH:mm' (เวลาไทย) */
+export function formatDateTime(ms) {
+  const p = bkkParts(ms);
+  return `${pad(p.d)}/${pad(p.mo)} ${pad(p.h)}:${pad(p.mi)}`;
+}
+
 export function summarize(values) {
   const nums = values.filter(isNum);
   if (nums.length === 0) return { max: null, avg: null, count: 0 };
