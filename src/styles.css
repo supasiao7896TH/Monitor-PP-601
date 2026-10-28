@@ -626,26 +626,50 @@ label {
 }
 
 /* ---------- Desktop Dashboard & Widescreen Layout (Supasit.A Studio) ---------- */
-.desktop-dashboard {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.pump-status-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
-.dash-side {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.dash-main {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+@media (min-width: 768px) {
+  .pump-status-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
-.side-pumps-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.tbl-card {
+  padding: 16px;
+  overflow: visible;
+}
+.tbl-wrap {
+  padding: 0;
+  overflow-x: auto;
+  width: 100%;
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.tbl th, .tbl td {
+  padding: 8px 12px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+.tbl thead th {
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-weight: 600;
+}
+.tbl thead th.grp {
+  text-align: center;
+  color: var(--accent-2);
+  font-size: 14px;
+}
+.tbl tbody th {
+  text-align: left;
+  font-weight: 600;
 }
 .side-pump-card {
   padding: 10px 12px;
@@ -756,18 +780,7 @@ label {
   }
 }
 
-@media (min-width: 1024px) {
-  .desktop-dashboard {
-    display: grid;
-    grid-template-columns: 360px 1fr;
-    gap: 20px;
-    align-items: start;
-  }
-  .dash-side {
-    position: sticky;
-    top: 76px;
-  }
-}
+/* Widescreen full-width flow */
 
 @media (min-width: 1200px) {
   .chart-box {

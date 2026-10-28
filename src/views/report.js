@@ -121,59 +121,71 @@ export function mount(root, { repo, store }) {
         }),
       ),
     );
-    const dashboard = h('div', { class: 'desktop-dashboard' });
-    const sideCol = h('div', { class: 'dash-side' });
-    const mainCol = h('div', { class: 'dash-main' });
-    page.append(dashboard);
-    dashboard.append(sideCol, mainCol);
-
-    // ฝั่งซ้าย: การ์ดสถานะปั๊มสด A, B, C
+    // 1. สถานะปั๊ม Real-time แนวนอน 3 คอลัมน์ (เห็นครบทุกตัว ชัดเจน ไม่ต้องเลื่อน)
     const status = store.get('status');
     const pumpStatusBox = h(
       'div',
-      { class: 'card side-pumps-grid' },
-      h('div', { class: 'row-between' }, h('h3', {}, 'สถานะปั๊ม Real-time'), h('span', { class: 'caption' }, 'PP-601')),
-      PUMPS.map((p) => {
-        const isRun = status[p] === 'RUN';
-        const isClean = status[p] === 'CLEANING';
-        const latest = latestReadingOf(live, p);
-        let alertBadge = null;
-        let tempRow = null;
-        if (latest && (isRun || isClean)) {
-          const ev = evaluate(latest, limits);
-          const isAlarm = ev.tg3603 === 'alarm' || ev.diff === 'alarm';
-          alertBadge = h('span', { class: `chip ${isAlarm ? 'chip-crit' : 'chip-ok'} num` }, isAlarm ? 'เตือน ⚠️' : 'ปกติ 🟢');
-          tempRow = h(
-            'div',
-            { class: 'side-pump-temps num' },
-            h('span', {}, `In: ${fmt(latest.tg3602)}°`),
-            h('span', { class: ev.tg3603 === 'alarm' ? 'warn-text' : '' }, `Out: ${fmt(latest.tg3603)}°`),
-            h('span', { class: ev.diff === 'alarm' ? 'warn-text' : '' }, `Diff: ${fmt(latest.diff)}°`),
-          );
-        }
-        return h(
-          'div',
-          { class: `side-pump-card ${isRun ? 'side-pump-run' : isClean ? 'side-pump-clean' : 'side-pump-standby'}` },
-          h(
-            'div',
-            { class: 'row-between' },
-            h('div', { class: 'side-pump-name' }, h('strong', {}, `PP-601${p}`), h('span', { class: 'side-pump-badge' }, isRun ? 'RUN' : isClean ? 'CLEANING' : 'STANDBY')),
-            alertBadge,
-          ),
-          tempRow,
-        );
-      }),
-    );
-    sideCol.append(pumpStatusBox);
-
-    // ฝั่งซ้าย: ตารางรอบจด 4 รอบของกะ
-    sideCol.append(h('div', { class: 'card tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', {}, head1, head2), h('tbody', {}, body))));
-
-    // ฝั่งขวา: ปุ่มสลับช่วงเวลากราฟ
-    mainCol.append(
+      { class: 'card' },
+      h('div', { class: 'row-between', style: 'margin-bottom: 8px;' }, h('h3', {}, 'สถานะปั๊ม Real-time'), h('span', { class: 'caption' }, 'Hot oil pump PP-601')),
       h(
         'div',
-        { class: 'row-between', 'data-html2canvas-ignore': 'true', style: 'align-items: center;' },
+        { class: 'pump-status-cards' },
+        PUMPS.map((p) => {
+          const isRun = status[p] === 'RUN';
+          const isClean = status[p] === 'CLEANING';
+          const latest = latestReadingOf(live, p);
+          let alertBadge = null;
+          let tempRow = null;
+          if (latest && (isRun || isClean)) {
+            const ev = evaluate(latest, limits);
+            const isAlarm = ev.tg3603 === 'alarm' || ev.diff === 'alarm';
+            alertBadge = h('span', { class: `chip ${isAlarm ? 'chip-crit' : 'chip-ok'} num` }, isAlarm ? 'เตือน ⚠️' : 'ปกติ 🟢');
+            tempRow = h(
+              'div',
+              { class: 'side-pump-temps num' },
+              h('span', {}, `In: ${fmt(latest.tg3602)}°`),
+              h('span', { class: ev.tg3603 === 'alarm' ? 'warn-text' : '' }, `Out: ${fmt(latest.tg3603)}°`),
+              h('span', { class: ev.diff === 'alarm' ? 'warn-text' : '' }, `Diff: ${fmt(latest.diff)}°`),
+            );
+          } else {
+            tempRow = h('div', { class: 'side-pump-temps caption' }, h('span', {}, isClean ? 'กำลังล้างทำความสะอาด' : 'สแตนด์บาย (ไม่มีข้อมูลเดินเครื่อง)'));
+          }
+          return h(
+            'div',
+            { class: `side-pump-card ${isRun ? 'side-pump-run' : isClean ? 'side-pump-clean' : 'side-pump-standby'}` },
+            h(
+              'div',
+              { class: 'row-between' },
+              h('div', { class: 'side-pump-name' }, h('strong', {}, `PP-601${p}`), h('span', { class: 'side-pump-badge' }, isRun ? 'RUN' : isClean ? 'CLEANING' : 'STANDBY')),
+              alertBadge,
+            ),
+            tempRow,
+          );
+        }),
+      ),
+    );
+    page.append(pumpStatusBox);
+
+    // 2. ตารางรอบจด 4 รอบของกะ — กว้างเต็มหน้าจอ ไม่มี scrollbar และเห็น PP-601C ครบถ้วน 100%
+    page.append(
+      h(
+        'div',
+        { class: 'card tbl-card' },
+        h(
+          'div',
+          { class: 'row-between', style: 'margin-bottom: 8px;' },
+          h('h3', {}, 'ตารางบันทึกค่าตามเวลาประจำกะ'),
+          h('span', { class: 'caption' }, `${shiftLabel(shiftId)} · 4 รอบ`),
+        ),
+        h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', {}, head1, head2), h('tbody', {}, body))),
+      ),
+    );
+
+    // 3. ปุ่มสลับช่วงเวลากราฟ
+    page.append(
+      h(
+        'div',
+        { class: 'row-between', 'data-html2canvas-ignore': 'true', style: 'align-items: center; margin-top: 6px;' },
         h('span', { class: 'caption font-bold' }, 'ช่วงเวลาดูกราฟแนวโน้ม:'),
         h(
           'div',
@@ -218,7 +230,7 @@ export function mount(root, { repo, store }) {
         );
       }
 
-      mainCol.append(
+      page.append(
         h(
           'div',
           { class: 'card chart-card' },
@@ -355,7 +367,7 @@ export function mount(root, { repo, store }) {
 
     // ----- เหตุการณ์ในกะ (สลับ pump / ล้าง) เพื่อให้รายงานที่แคปมีบริบท
     if (sw.length > 0) {
-      sideCol.append(
+      page.append(
         h(
           'div',
           { class: 'card' },
@@ -490,7 +502,20 @@ export function mount(root, { repo, store }) {
     try {
       const blobPromise = (async () => {
         const { default: html2canvas } = await import('html2canvas-pro');
-        const canvas = await html2canvas(el, { backgroundColor: cssVar('--bg'), scale: 2, useCORS: false, logging: false });
+        const canvas = await html2canvas(el, {
+          backgroundColor: cssVar('--bg'),
+          scale: 2,
+          useCORS: false,
+          logging: false,
+          onclone: (clonedDoc) => {
+            // ปลดล็อคความกว้างตาราง ให้รูปแคปแสดงข้อมูลครบทุกปั๊ม (A, B, C) โดยไม่มีแถบเลื่อน scrollbar
+            clonedDoc.querySelectorAll('.tbl-wrap').forEach((w) => {
+              w.style.overflow = 'visible';
+              w.style.width = '100%';
+              w.style.maxWidth = 'none';
+            });
+          },
+        });
         const made = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
         if (!made) throw new Error('toBlob failed');
         return made;
