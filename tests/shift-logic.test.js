@@ -10,6 +10,9 @@ import {
   isStoppedRunRecent,
   buildLongSeries,
   formatDateTime,
+  rangeSlots,
+  formatSlotLabel,
+  latestReadingOf,
   shiftOf,
   shiftRange,
   shiftSlots,
@@ -345,5 +348,67 @@ describe('กราฟยาวตามรอบเดิน pump', () => {
 
   it('formatDateTime เป็น dd/MM HH:mm เวลาไทย', () => {
     expect(formatDateTime(bkk(2026, 10, 7, 22))).toBe('07/10 22:00');
+  });
+
+  describe('rangeSlots & formatSlotLabel สำหรับกราฟละเอียด', () => {
+    it('rangeSlots: กะนี้ (shift) คืน 4 slot ตามปกติ', () => {
+      const slots = rangeSlots('2026-10-12_D', 'shift');
+      expect(slots.length).toBe(4);
+      expect(slots[0]).toBe(bkk(2026, 10, 12, 10));
+      expect(slots[3]).toBe(bkk(2026, 10, 12, 19));
+    });
+
+    it('rangeSlots: 24 ชม. (24h) คืน 8 slot ย้อนหลังต่อเนื่อง', () => {
+      const slots = rangeSlots('2026-10-12_D', '24h');
+      expect(slots.length).toBe(8);
+      // เริ่ม 22:00 วันก่อนหน้า ถึง 19:00 วันนี้
+      expect(slots[0]).toBe(bkk(2026, 10, 11, 22));
+      expect(slots[7]).toBe(bkk(2026, 10, 12, 19));
+    });
+
+    it('rangeSlots: 48 ชม. (48h) คืน 16 slot', () => {
+      const slots = rangeSlots('2026-10-12_D', '48h');
+      expect(slots.length).toBe(16);
+      expect(slots[15]).toBe(bkk(2026, 10, 12, 19));
+    });
+
+    it('formatSlotLabel: แสดงเวลาและวันที่ตามช่วง', () => {
+      const s1 = bkk(2026, 10, 12, 10);
+      const s01 = bkk(2026, 10, 12, 1);
+      expect(formatSlotLabel(s1, 'shift')).toBe('10:00');
+      expect(formatSlotLabel(s1, '24h')).toBe('10:00');
+      expect(formatSlotLabel(s01, '24h')).toBe('12/10 01:00');
+      expect(formatSlotLabel(s1, '48h')).toBe('12/10 10:00');
+    });
+  });
+
+  describe('latestReadingOf: ดึงค่าล่าสุดของ pump', () => {
+    it('ดึงค่าล่าสุดเรียงตามเวลา slotTime และคำนวณ diff ถูกต้อง', () => {
+      const readings = [
+        { pump: 'A', slotTime: bkk(2026, 10, 12, 10), tg3602: 120, tg3603: 90 },
+        { pump: 'A', slotTime: bkk(2026, 10, 12, 16), tg3602: 128, tg3603: 94 },
+        { pump: 'A', slotTime: bkk(2026, 10, 12, 13), tg3602: 125, tg3603: 92 },
+        { pump: 'B', slotTime: bkk(2026, 10, 12, 19), tg3602: 130, tg3603: 95 },
+      ];
+      const latest = latestReadingOf(readings, 'A');
+      expect(latest).toBeDefined();
+      expect(latest.slotTime).toBe(bkk(2026, 10, 12, 16));
+      expect(latest.tg3602).toBe(128);
+      expect(latest.tg3603).toBe(94);
+      expect(latest.diff).toBe(34);
+    });
+
+    it('ไม่นำรายการที่ voided หรือไม่มีตัวเลขมานับ', () => {
+      const readings = [
+        { pump: 'A', slotTime: bkk(2026, 10, 12, 10), tg3602: 120, tg3603: 90 },
+        { pump: 'A', slotTime: bkk(2026, 10, 12, 16), tg3602: 128, tg3603: 94, voided: true },
+      ];
+      const latest = latestReadingOf(readings, 'A');
+      expect(latest.slotTime).toBe(bkk(2026, 10, 12, 10));
+    });
+
+    it('คืนค่า null ถ้าไม่มีข้อมูลของ pump นั้น', () => {
+      expect(latestReadingOf([], 'C')).toBeNull();
+    });
   });
 });

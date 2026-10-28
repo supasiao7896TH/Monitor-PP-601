@@ -1,9 +1,18 @@
 {
   "name": "monitor-pp-601",
+  "account_id": "e87e6b4e7ec59834a35db192e7e37eb8",
+  "main": "./src/worker.js",
   "compatibility_date": "2026-10-12",
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pp601-db",
+      "database_id": "6af38684-93e5-4d5b-8f9e-85b89e9257c3"
+    }
+  ],
   "observability": { "enabled": true }
 }

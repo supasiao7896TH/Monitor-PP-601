@@ -78,8 +78,10 @@ function updateNet() {
   const el = document.getElementById('net');
   if (!el) return;
   const offline = !navigator.onLine;
-  el.className = `chip ${offline ? 'chip-crit' : repo?.mode === 'firebase' ? 'chip-ok' : 'chip-warn'}`;
-  el.textContent = offline ? 'ออฟไลน์' : repo?.mode === 'firebase' ? '● ออนไลน์' : 'โหมดทดลอง';
+  const isOnline = repo?.mode === 'firebase' || repo?.hasD1;
+  const label = offline ? 'ออฟไลน์' : repo?.mode === 'firebase' ? '● Firebase' : repo?.hasD1 ? '● คลาวด์ D1' : 'โหมดทดลอง';
+  el.className = `chip ${offline ? 'chip-crit' : isOnline ? 'chip-ok' : 'chip-warn'}`;
+  el.textContent = label;
 }
 
 function webViewBanner() {
@@ -139,6 +141,7 @@ async function init() {
   repo.watchLimits((doc) => store.set('limits', { ...DEFAULT_LIMITS, ...(doc ?? {}) }));
 
   renderShell();
+  updateNet();
   webViewBanner();
   window.addEventListener('hashchange', route);
   window.addEventListener('online', updateNet);

@@ -111,6 +111,37 @@ export function shiftSlots(id) {
   return [first, first + 3 * HOUR, first + 6 * HOUR, first + 9 * HOUR];
 }
 
+/**
+ * รายการ slot ตามช่วงเวลาที่ต้องการ (shift: 4, 24h: 8, 48h: 16, 7d: 56)
+ * เรียงจากอดีตมาหาปัจจุบัน โดย slot สุดท้ายคือ slot ท้ายสุดของ shiftId ที่เลือก
+ */
+export function rangeSlots(shiftId, rangeMode = '24h') {
+  const base = shiftSlots(shiftId);
+  if (rangeMode === 'shift') return base;
+  const last = base[base.length - 1];
+  const count = rangeMode === '48h' ? 16 : rangeMode === '7d' ? 56 : 8;
+  const out = [];
+  for (let i = count - 1; i >= 0; i--) {
+    out.push(last - i * 3 * HOUR);
+  }
+  return out;
+}
+
+/**
+ * รูปแบบ label แกน X ของกราฟตามช่วงเวลา
+ * - shift: '10:00'
+ * - 24h: '10:00' (ยกเว้น 01:00 แสดง 'dd/MM 01:00')
+ * - 48h / 7d: 'dd/MM HH:mm'
+ */
+export function formatSlotLabel(ms, rangeMode = '24h') {
+  if (rangeMode === 'shift') return formatTime(ms);
+  if (rangeMode === '24h') {
+    const p = bkkParts(ms);
+    return p.h === 1 ? formatDateTime(ms) : formatTime(ms);
+  }
+  return formatDateTime(ms);
+}
+
 /** id ของกะก่อนหน้า/ถัดไป (ใช้เลื่อนดูรายงาน) */
 export function adjacentShift(id, dir) {
   const { start } = shiftRange(id);
@@ -324,6 +355,27 @@ export function summarize(values) {
     max: Math.max(...nums),
     avg: Math.round((sum / nums.length) * 10) / 10,
     count: nums.length,
+  };
+}
+
+/**
+ * ดึงค่า reading ล่าสุดของ pump ที่กำหนด (ไม่รวมรายการที่ยกเลิก)
+ * คืนค่า { slotTime, tg3602, tg3603, diff, note, recordedBy } หรือ null ถ้าไม่มีข้อมูล
+ */
+export function latestReadingOf(readings, pump) {
+  const mine = readings.filter(
+    (r) => r.pump === pump && !r.voided && isNum(r.tg3602) && isNum(r.tg3603),
+  );
+  if (mine.length === 0) return null;
+  mine.sort((a, b) => b.slotTime - a.slotTime);
+  const top = mine[0];
+  return {
+    slotTime: top.slotTime,
+    tg3602: top.tg3602,
+    tg3603: top.tg3603,
+    diff: calcDiff(top.tg3602, top.tg3603),
+    note: top.note ?? '',
+    recordedBy: top.recordedBy ?? '',
   };
 }
 

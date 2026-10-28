@@ -5,6 +5,8 @@ import {
   shiftRange,
   shiftSlots,
   shiftLabel,
+  rangeSlots,
+  formatSlotLabel,
   adjacentShift,
   buildSeries,
   summarize,
@@ -17,6 +19,7 @@ import {
   buildLongSeries,
   LONG_CHART_MAX_DAYS,
   PUMPS,
+  latestReadingOf,
 } from '../modules/shift-logic.js';
 import { TARGET_LABEL } from '../modules/app-config.js';
 
@@ -24,12 +27,20 @@ Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryS
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+const RANGES = [
+  { id: 'shift', label: 'กะนี้ (4 รอบ)' },
+  { id: '24h', label: '24 ชม. (8 รอบ)' },
+  { id: '48h', label: '48 ชม. (16 รอบ)' },
+  { id: '7d', label: '7 วัน' },
+];
+
 /**
  * หน้ารายงานกะ — ออกแบบให้พอดี 1 จอมือถือ (แนวตั้ง) เพื่อแคปส่ง LINE
  * pump ที่ไม่มีข้อมูล (standby) ไม่แสดง และช่องว่างในกราฟเป็น null ไม่ใช่ 0
  */
 export function mount(root, { repo, store }) {
   let shiftId = shiftOf(Date.now());
+  let chartRange = '24h';
   let readings = [];
   let events = [];
   let unwatch = () => {};
@@ -111,36 +122,135 @@ export function mount(root, { repo, store }) {
     page.append(h('div', { class: 'card tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', {}, head1, head2), h('tbody', {}, body))));
 
     // ----- กราฟต่อ pump + สถิติ
-    const labels = slots.map(formatTime);
+    page.append(
+      h(
+        'div',
+        { class: 'row-between', 'data-html2canvas-ignore': 'true' },
+        h('span', { class: 'caption font-bold' }, 'ช่วงเวลาดูกราฟแนวโน้ม:'),
+        h(
+          'div',
+          { class: 'btn-row' },
+          RANGES.map((rng) =>
+            h(
+              'button',
+              {
+                class: `btn btn-sm ${chartRange === rng.id ? 'btn-primary' : 'btn-soft'}`,
+                type: 'button',
+                onclick: () => {
+                  chartRange = rng.id;
+                  watch();
+                },
+              },
+              rng.label,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    const cSlots = rangeSlots(shiftId, chartRange);
+    const labels = cSlots.map((s) => formatSlotLabel(s, chartRange));
+
     for (const p of pumps) {
-      const s = buildSeries(slots, live, p);
+      const s = buildSeries(cSlots, live, p);
+      const st2 = summarize(s.tg3602);
       const st3 = summarize(s.tg3603);
       const stD = summarize(s.diff);
+      const latest = latestReadingOf(live, p);
       const canvas = h('canvas', { role: 'img', 'aria-label': `กราฟอุณหภูมิ PP-601${p}` });
+
+      let latestChip = null;
+      if (latest) {
+        const ev = evaluate(latest, limits);
+        const hasAlarm = ev.tg3603 === 'alarm' || ev.diff === 'alarm';
+        latestChip = h(
+          'span',
+          { class: `chip ${hasAlarm ? 'chip-crit' : 'chip-ok'} num` },
+          `ล่าสุด ${formatTime(latest.slotTime)}: 3602=${fmt(latest.tg3602)}° · 3603=${fmt(latest.tg3603)}° (Diff ${fmt(latest.diff)}°)`,
+        );
+      }
+
       page.append(
         h(
           'div',
           { class: 'card chart-card' },
-          h('div', { class: 'chart-title' }, h('h3', {}, `PP-601${p}`), h('span', { class: 'caption num' }, `3603 สูงสุด ${fmt(st3.max)} · เฉลี่ย ${fmt(st3.avg)} · Diff ต่ำสุด ${fmt(stD.count ? Math.min(...s.diff.filter((v) => v != null)) : null)}`)),
+          h(
+            'div',
+            { class: 'chart-title' },
+            h(
+              'div',
+              { class: 'row-between', style: 'width: 100%; align-items: center;' },
+              h('h3', {}, `PP-601${p}`),
+              latestChip,
+            ),
+            h(
+              'div',
+              { class: 'caption num', style: 'display: flex; gap: 8px; flex-wrap: wrap;' },
+              h('span', {}, h('strong', {}, '3602'), ` สูงสุด ${fmt(st2.max)} · เฉลี่ย ${fmt(st2.avg)}`),
+              h('span', {}, '·'),
+              h('span', {}, h('strong', {}, '3603'), ` สูงสุด ${fmt(st3.max)} · เฉลี่ย ${fmt(st3.avg)}`),
+              h('span', {}, '·'),
+              h('span', {}, h('strong', {}, 'Diff'), ` ต่ำสุด ${fmt(stD.count ? Math.min(...s.diff.filter((v) => v != null)) : null)}`),
+            ),
+          ),
           h('div', { class: 'chart-box' }, canvas),
         ),
       );
 
-      const target = (value, color) => ({
-        data: slots.map(() => value),
+      const datasets = [
+        {
+          label: 'TG-3602',
+          data: s.tg3602,
+          borderColor: cssVar('--accent'),
+          backgroundColor: cssVar('--accent'),
+          tension: 0.2,
+          yAxisID: 'yTemp',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          spanGaps: false,
+        },
+        {
+          label: 'TG-3603',
+          data: s.tg3603,
+          borderColor: cssVar('--accent-2'),
+          backgroundColor: cssVar('--accent-2'),
+          tension: 0.2,
+          yAxisID: 'yTemp',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          spanGaps: false,
+        },
+        {
+          label: 'Diff',
+          data: s.diff,
+          borderColor: cssVar('--text-2'),
+          backgroundColor: cssVar('--text-2'),
+          tension: 0.2,
+          yAxisID: 'yDiff',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          spanGaps: false,
+        },
+      ];
+
+      const flat = (value, color, yAxisID) => ({
+        data: cSlots.map(() => value),
         borderColor: color,
         borderDash: [5, 4],
         borderWidth: 1,
         pointRadius: 0,
-        label: undefined,
+        yAxisID,
       });
-      const datasets = [
-        { label: 'TG-3602', data: s.tg3602, borderColor: cssVar('--accent'), backgroundColor: cssVar('--accent'), tension: 0.25 },
-        { label: 'TG-3603', data: s.tg3603, borderColor: cssVar('--accent-2'), backgroundColor: cssVar('--accent-2'), tension: 0.25 },
-        { label: 'Diff', data: s.diff, borderColor: cssVar('--text-2'), backgroundColor: cssVar('--text-2'), tension: 0.25 },
-      ].map((d) => ({ ...d, borderWidth: 2, pointRadius: 3, spanGaps: false }));
-      if (limits.tg3603Target != null) datasets.push({ ...target(limits.tg3603Target, cssVar('--crit')), label: `Target ${limits.tg3603Target}` });
-      if (limits.diffTarget != null) datasets.push({ ...target(limits.diffTarget, cssVar('--text-3')), label: `Diff ${limits.diffTarget}` });
+
+      if (limits.tg3603Target != null) {
+        datasets.push({ ...flat(limits.tg3603Target, cssVar('--crit'), 'yTemp'), label: `Target ${limits.tg3603Target}` });
+      }
+      if (limits.diffTarget != null) {
+        datasets.push({ ...flat(limits.diffTarget, cssVar('--text-3'), 'yDiff'), label: `Diff ${limits.diffTarget}` });
+      }
 
       charts.push(
         new Chart(canvas, {
@@ -150,11 +260,46 @@ export function mount(root, { repo, store }) {
             responsive: true,
             maintainAspectRatio: false,
             animation: false,
+            interaction: { mode: 'index', intersect: false },
             scales: {
-              y: { beginAtZero: true, ticks: { color: cssVar('--text-3') }, grid: { color: cssVar('--border') } },
-              x: { ticks: { color: cssVar('--text-3') }, grid: { display: false } },
+              yTemp: {
+                type: 'linear',
+                position: 'left',
+                title: { display: true, text: 'Temp (°C)', color: cssVar('--text-3'), font: { size: 10 } },
+                ticks: { color: cssVar('--text-3') },
+                grid: { color: cssVar('--border') },
+                grace: '5%',
+              },
+              yDiff: {
+                type: 'linear',
+                position: 'right',
+                title: { display: true, text: 'Diff (°C)', color: cssVar('--text-3'), font: { size: 10 } },
+                ticks: { color: cssVar('--text-3') },
+                grid: { display: false },
+                grace: '10%',
+                beginAtZero: true,
+              },
+              x: {
+                ticks: {
+                  color: cssVar('--text-3'),
+                  font: { size: 10.5 },
+                  maxRotation: 0,
+                  autoSkip: chartRange === '7d',
+                },
+                grid: { display: false },
+              },
             },
-            plugins: { legend: { labels: { color: cssVar('--text-2'), usePointStyle: true, boxWidth: 8, font: { size: 11 }, filter: (item) => item.datasetIndex < 3 } } },
+            plugins: {
+              legend: {
+                labels: {
+                  color: cssVar('--text-2'),
+                  usePointStyle: true,
+                  boxWidth: 8,
+                  font: { size: 11 },
+                  filter: (item) => item.datasetIndex < 3,
+                },
+              },
+            },
           },
         }),
       );
@@ -208,21 +353,53 @@ export function mount(root, { repo, store }) {
       // pump ที่หยุดไปนานแล้วไม่ต้องแสดง (กันการ์ดเก่าค้างเต็มหน้า/เต็มรูปที่ส่ง LINE)
       if (!running && !isStoppedRunRecent(s.slots[s.slots.length - 1], Date.now())) continue;
 
+      const st2 = summarize(s.tg3602);
       const st3 = summarize(s.tg3603);
+      const latest = latestReadingOf(live, p);
       const capped = start < longFrom ? ` · แสดงย้อนหลังสูงสุด ${LONG_CHART_MAX_DAYS} วัน` : '';
       const stopped = running ? '' : win.end != null ? ` · หยุดแล้ว ${formatDateTime(win.end)}` : ' · ไม่ได้เดินแล้ว';
       const canvas = h('canvas', { role: 'img', 'aria-label': `กราฟยาวอุณหภูมิ PP-601${p} ตั้งแต่เริ่มเดิน` });
       if (count++ === 0) shot.append(h('h2', { class: 'center' }, 'PP-601 กราฟตั้งแต่เริ่มเดิน'));
+
+      let latestLongChip = null;
+      if (latest) {
+        const ev = evaluate(latest, limits);
+        const hasAlarm = ev.tg3603 === 'alarm' || ev.diff === 'alarm';
+        latestLongChip = h(
+          'span',
+          { class: `chip ${hasAlarm ? 'chip-crit' : 'chip-ok'} num` },
+          `ล่าสุด ${formatDateTime(latest.slotTime)}: 3602=${fmt(latest.tg3602)}° · 3603=${fmt(latest.tg3603)}° (Diff ${fmt(latest.diff)}°)`,
+        );
+      }
+
       shot.append(
         h(
           'div',
           { class: 'card chart-card' },
-          h('div', { class: 'chart-title' }, h('h3', {}, `PP-601${p} · ${running ? 'ตั้งแต่เริ่มเดิน' : 'รอบเดินก่อนหยุด'}`), h('span', { class: 'caption num' }, `เริ่ม ${formatDateTime(start)}${stopped} · ${st3.count} ค่า · 3603 สูงสุด ${fmt(st3.max)} · เฉลี่ย ${fmt(st3.avg)}${capped}`)),
+          h(
+            'div',
+            { class: 'chart-title' },
+            h(
+              'div',
+              { class: 'row-between', style: 'width: 100%; align-items: center;' },
+              h('h3', {}, `PP-601${p} · ${running ? 'ตั้งแต่เริ่มเดิน' : 'รอบเดินก่อนหยุด'}`),
+              latestLongChip,
+            ),
+            h(
+              'div',
+              { class: 'caption num', style: 'display: flex; gap: 8px; flex-wrap: wrap;' },
+              h('span', {}, `เริ่ม ${formatDateTime(start)}${stopped} · ${st3.count} ค่า${capped}`),
+              h('span', {}, '·'),
+              h('span', {}, h('strong', {}, '3602'), ` สูงสุด ${fmt(st2.max)} · เฉลี่ย ${fmt(st2.avg)}`),
+              h('span', {}, '·'),
+              h('span', {}, h('strong', {}, '3603'), ` สูงสุด ${fmt(st3.max)} · เฉลี่ย ${fmt(st3.avg)}`),
+            ),
+          ),
           h('div', { class: 'chart-box' }, canvas),
         ),
       );
 
-      const line = (label, data, color) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 1.5, pointRadius: 0, pointHitRadius: 8, tension: 0.15, spanGaps: false });
+      const line = (label, data, color) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 1.5, pointRadius: 2.5, pointHoverRadius: 5, tension: 0.15, spanGaps: false });
       const flat = (label, value, color) => ({ label, data: s.slots.map(() => value), borderColor: color, borderWidth: 1, borderDash: [5, 4], pointRadius: 0, pointHitRadius: 0 });
       const datasets = [line('TG-3602', s.tg3602, cssVar('--accent')), line('TG-3603', s.tg3603, cssVar('--accent-2')), line('Diff', s.diff, cssVar('--text-2'))];
       if (limits.tg3603Target != null) datasets.push(flat(`Target ${limits.tg3603Target}`, limits.tg3603Target, cssVar('--crit')));
@@ -238,8 +415,8 @@ export function mount(root, { repo, store }) {
             animation: false,
             interaction: { mode: 'index', intersect: false },
             scales: {
-              y: { beginAtZero: true, ticks: { color: cssVar('--text-3') }, grid: { color: cssVar('--border') } },
-              x: { ticks: { color: cssVar('--text-3'), maxTicksLimit: 6, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+              y: { ticks: { color: cssVar('--text-3') }, grid: { color: cssVar('--border') }, grace: '5%' },
+              x: { ticks: { color: cssVar('--text-3'), maxTicksLimit: 8, maxRotation: 0, autoSkip: true }, grid: { display: false } },
             },
             plugins: { legend: { labels: { color: cssVar('--text-2'), usePointStyle: true, boxWidth: 8, font: { size: 11 }, filter: (item) => item.datasetIndex < 3 } } },
           },
@@ -321,8 +498,11 @@ export function mount(root, { repo, store }) {
 
   function watch() {
     unwatch();
+    const cSlots = rangeSlots(shiftId, chartRange);
     const r = shiftRange(shiftId);
-    unwatch = repo.watchReadings(r.start, r.end, (rows) => {
+    const fromMs = Math.min(r.start, cSlots[0]);
+    const toMs = Math.max(r.end, cSlots[cSlots.length - 1]);
+    unwatch = repo.watchReadings(fromMs, toMs, (rows) => {
       readings = rows;
       render();
     });

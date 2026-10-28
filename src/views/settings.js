@@ -59,6 +59,41 @@ export function mount(root, { repo, store, applyTheme }) {
     toast(`ส่งออก ${rows.length} รายการ (ย้อนหลัง 31 วัน)`, 'ok');
   }
 
+  // ---------- นำเข้าข้อมูลเริ่มต้นจาก Excel ----------
+  const seedStatusEl = h('p', { class: 'caption', role: 'status' }, 'กำลังตรวจสอบประวัติ…');
+  const seedBtn = h('button', { class: 'btn btn-primary', type: 'button' }, 'นำเข้าข้อมูลย้อนหลัง (1,003 รายการ)');
+
+  repo.getReadings(0, Date.now() + 24 * 3600 * 1000).then((existing) => {
+    const valid = (existing ?? []).filter((r) => !r.voided);
+    if (valid.length > 0) {
+      seedStatusEl.textContent = `ปัจจุบันมีข้อมูลในระบบแล้ว ${valid.length} รายการ (กดปุ่มเพื่ออัปเดตหรือนำเข้าซ้ำได้)`;
+    } else {
+      seedStatusEl.textContent = 'ยังไม่มีข้อมูลในระบบ — กดปุ่มเพื่อนำเข้าประวัติย้อนหลัง 68 วันจาก Excel';
+    }
+  }).catch(() => {
+    seedStatusEl.textContent = 'กดปุ่มด้านล่างเพื่อนำเข้าข้อมูลย้อนหลังจาก Excel';
+  });
+
+  seedBtn.onclick = async () => {
+    seedBtn.disabled = true;
+    seedStatusEl.textContent = 'กำลังโหลดไฟล์ข้อมูลย้อนหลัง…';
+    try {
+      const seedMod = await import('../data/seed-data.json');
+      const seedData = seedMod.default ?? seedMod;
+      seedStatusEl.textContent = `กำลังนำเข้า ${seedData.readings.length} รายการ…`;
+      const res = await repo.importSeed(seedData, (done, total) => {
+        seedStatusEl.textContent = `กำลังนำเข้า ${done}/${total} รายการ…`;
+      });
+      toast(`นำเข้าสำเร็จ: ${res.readings} readings, ${res.events} events`, 'ok');
+      seedStatusEl.textContent = `✓ นำเข้าข้อมูลประวัติเรียบร้อย (${res.readings} ค่า, ${res.events} เหตุการณ์)`;
+    } catch (err) {
+      console.error(err);
+      toast('นำเข้าข้อมูลไม่สำเร็จ', 'error');
+      seedStatusEl.textContent = `เกิดข้อผิดพลาด: ${err?.message ?? 'unknown'}`;
+      seedBtn.disabled = false;
+    }
+  };
+
   root.append(
     h(
       'div',
@@ -88,6 +123,14 @@ export function mount(root, { repo, store, applyTheme }) {
         PUMPS.map((p) => h('div', { class: 'row-between' }, h('label', { for: `st-${p}` }, `PP-601${p}`), stSelects[p])),
         stErr,
         h('button', { class: 'btn btn-outline', type: 'button', onclick: saveStatus }, 'บันทึกสถานะ'),
+      ),
+      h(
+        'section',
+        { class: 'card stack' },
+        h('h2', {}, 'ข้อมูลเริ่มต้นจาก Excel (Seed Data)'),
+        h('p', { class: 'caption' }, 'นำเข้าข้อมูลย้อนหลัง 503 ช่วงเวลา (1,003 ค่า) ระหว่าง 21/08/2569 – 28/10/2569 จากไฟล์ Monitor temp pump PP-601.xlsx'),
+        seedStatusEl,
+        seedBtn,
       ),
       h('section', { class: 'card stack' }, h('h2', {}, 'ทั่วไป'), h('label', { for: 'st-theme' }, 'ธีม'), theme, h('button', { class: 'btn btn-outline', type: 'button', onclick: exportCsv }, 'ส่งออก CSV (ย้อนหลัง 31 วัน)')),
       h('p', { class: 'caption center' }, `v${APP_VERSION} · ${repo.mode === 'firebase' ? 'เชื่อมต่อ Firebase (real-time)' : 'โหมดทดลองในเครื่อง — ยังไม่ sync'} · A-Class WebCraft · by Supasit.A`),

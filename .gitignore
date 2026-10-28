@@ -3,3 +3,6 @@ dist
 .wrangler
 .env
 *.log
+*.xlsx
+*.bak*
+

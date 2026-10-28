@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm test && npm run build"
+    "check": "npm test && npm run build",
+    "extract:excel": "powershell -ExecutionPolicy Bypass -File ./scripts/extract-excel.ps1"
   },
   "dependencies": {
     "chart.js": "^4.5.1",

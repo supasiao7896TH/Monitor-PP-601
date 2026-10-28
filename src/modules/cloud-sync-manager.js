@@ -24,6 +24,7 @@ import {
   where,
   orderBy,
   limit,
+  writeBatch,
 } from 'firebase/firestore';
 
 const SYNC_TIMEOUT_MS = 3000;
@@ -115,6 +116,42 @@ export function createFirebaseRepo(firebaseConfig) {
 
     saveLimits(limits) {
       return withTimeout(setDoc(doc(db, 'config', 'limits'), { ...limits, updatedAt: Date.now() }));
+    },
+
+    async importSeed({ readings = [], events = [] }, onProgress = () => {}) {
+      let count = 0;
+      const total = readings.length + events.length;
+      const now = Date.now();
+
+      // Chunk readings in batches of 300 to stay well under Firestore's 500 batch limit
+      for (let i = 0; i < readings.length; i += 300) {
+        const batch = writeBatch(db);
+        const chunk = readings.slice(i, i + 300);
+        for (const r of chunk) {
+          const { id, ...data } = r;
+          const ref = doc(db, 'readings', id);
+          batch.set(ref, { ...data, updatedAt: now }, { merge: true });
+        }
+        await batch.commit();
+        count += chunk.length;
+        onProgress(count, total);
+      }
+
+      // Chunk events
+      for (let i = 0; i < events.length; i += 300) {
+        const batch = writeBatch(db);
+        const chunk = events.slice(i, i + 300);
+        for (const e of chunk) {
+          const { id, ...data } = e;
+          const ref = doc(db, 'events', id);
+          batch.set(ref, { ...data, createdAt: data.createdAt ?? now }, { merge: true });
+        }
+        await batch.commit();
+        count += chunk.length;
+        onProgress(count, total);
+      }
+
+      return { readings: readings.length, events: events.length };
     },
   };
 }
