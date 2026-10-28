@@ -22,7 +22,7 @@ export function h(tag, props = {}, ...children) {
 }
 
 export function clear(el) {
-  el.replaceChildren();
+  el?.replaceChildren?.();
 }
 
 let toastTimer;

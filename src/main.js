@@ -44,7 +44,7 @@ function applyTheme(mode) {
   else delete root.dataset.theme;
   lsSet('pp601-theme', mode);
   store.set('theme', mode);
-  if (store.get('tab') === 'report') route(); // กราฟอ่านสีจาก token ตอนสร้าง ต้องวาดใหม่
+  if (document.getElementById('view') && store.get('tab') === 'report') route(); // วาดใหม่เฉพาะเมื่อ mount view แล้ว
 }
 
 const store = createStore({
@@ -140,6 +140,7 @@ function route() {
   document.getElementById(`mob-tab-${tab.id}`)?.setAttribute('aria-current', 'page');
 
   const view = document.getElementById('view');
+  if (!view) return;
   clear(view);
   try {
     unmount = tab.view.mount(view, { repo, store, applyTheme });
