@@ -33,7 +33,7 @@ powershell -ExecutionPolicy Bypass -File "./scripts/setup-new-pc.ps1"
 
 ```bash
 npm ci
-npm test        # รัน 75 unit tests (Vitest)
+npm test        # รัน 81 unit tests (Vitest)
 npm run check   # รัน tests + build production
 npm run dev     # รัน Vite dev server สำหรับแก้ไข UI
 ```

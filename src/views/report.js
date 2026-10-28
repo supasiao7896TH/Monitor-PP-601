@@ -79,17 +79,19 @@ export function mount(root, { repo, store }) {
       h(
         'div',
         { class: 'row-between report-head' },
-        h('button', { class: 'btn btn-outline btn-sm', type: 'button', 'aria-label': 'กะก่อนหน้า', onclick: () => go(-1) }, '‹'),
-        h('div', { class: 'center' }, h('h2', {}, 'PP-601 รายงานกะ'), h('p', { class: 'caption' }, shiftLabel(shiftId))),
-        h('button', { class: 'btn btn-outline btn-sm', type: 'button', 'aria-label': 'กะถัดไป', onclick: () => go(1) }, '›'),
-      ),
-    );
-
-    page.append(
-      h(
-        'div',
-        { 'data-html2canvas-ignore': 'true' },
-        h('button', { class: 'btn btn-soft btn-sm btn-block', type: 'button', onclick: () => saveImage(page, `PP601-report-${shiftId}.png`, `PP-601 ${shiftLabel(shiftId)}`) }, 'บันทึกรายงานเป็นรูป / ส่ง LINE'),
+        h(
+          'div',
+          { style: 'display: flex; align-items: center; gap: 8px;' },
+          h('button', { class: 'btn btn-outline btn-sm', type: 'button', 'aria-label': 'กะก่อนหน้า', onclick: () => go(-1) }, '‹'),
+          h('div', {}, h('h2', {}, 'PP-601 รายงานกะ / มอนิเตอร์'), h('p', { class: 'caption' }, shiftLabel(shiftId))),
+          h('button', { class: 'btn btn-outline btn-sm', type: 'button', 'aria-label': 'กะถัดไป', onclick: () => go(1) }, '›'),
+        ),
+        h(
+          'div',
+          { class: 'report-actions', 'data-html2canvas-ignore': 'true' },
+          h('button', { class: 'btn btn-soft btn-sm', type: 'button', onclick: () => watch() }, '🔄 รีเฟรช'),
+          h('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => saveImage(page, `PP601-report-${shiftId}.png`, `PP-601 ${shiftLabel(shiftId)}`) }, '📷 บันทึกรายงานเป็นรูป / ส่ง LINE'),
+        ),
       ),
     );
 
@@ -119,13 +121,59 @@ export function mount(root, { repo, store }) {
         }),
       ),
     );
-    page.append(h('div', { class: 'card tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', {}, head1, head2), h('tbody', {}, body))));
+    const dashboard = h('div', { class: 'desktop-dashboard' });
+    const sideCol = h('div', { class: 'dash-side' });
+    const mainCol = h('div', { class: 'dash-main' });
+    page.append(dashboard);
+    dashboard.append(sideCol, mainCol);
 
-    // ----- กราฟต่อ pump + สถิติ
-    page.append(
+    // ฝั่งซ้าย: การ์ดสถานะปั๊มสด A, B, C
+    const status = store.get('status');
+    const pumpStatusBox = h(
+      'div',
+      { class: 'card side-pumps-grid' },
+      h('div', { class: 'row-between' }, h('h3', {}, 'สถานะปั๊ม Real-time'), h('span', { class: 'caption' }, 'PP-601')),
+      PUMPS.map((p) => {
+        const isRun = status[p] === 'RUN';
+        const isClean = status[p] === 'CLEANING';
+        const latest = latestReadingOf(live, p);
+        let alertBadge = null;
+        let tempRow = null;
+        if (latest && (isRun || isClean)) {
+          const ev = evaluate(latest, limits);
+          const isAlarm = ev.tg3603 === 'alarm' || ev.diff === 'alarm';
+          alertBadge = h('span', { class: `chip ${isAlarm ? 'chip-crit' : 'chip-ok'} num` }, isAlarm ? 'เตือน ⚠️' : 'ปกติ 🟢');
+          tempRow = h(
+            'div',
+            { class: 'side-pump-temps num' },
+            h('span', {}, `In: ${fmt(latest.tg3602)}°`),
+            h('span', { class: ev.tg3603 === 'alarm' ? 'warn-text' : '' }, `Out: ${fmt(latest.tg3603)}°`),
+            h('span', { class: ev.diff === 'alarm' ? 'warn-text' : '' }, `Diff: ${fmt(latest.diff)}°`),
+          );
+        }
+        return h(
+          'div',
+          { class: `side-pump-card ${isRun ? 'side-pump-run' : isClean ? 'side-pump-clean' : 'side-pump-standby'}` },
+          h(
+            'div',
+            { class: 'row-between' },
+            h('div', { class: 'side-pump-name' }, h('strong', {}, `PP-601${p}`), h('span', { class: 'side-pump-badge' }, isRun ? 'RUN' : isClean ? 'CLEANING' : 'STANDBY')),
+            alertBadge,
+          ),
+          tempRow,
+        );
+      }),
+    );
+    sideCol.append(pumpStatusBox);
+
+    // ฝั่งซ้าย: ตารางรอบจด 4 รอบของกะ
+    sideCol.append(h('div', { class: 'card tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', {}, head1, head2), h('tbody', {}, body))));
+
+    // ฝั่งขวา: ปุ่มสลับช่วงเวลากราฟ
+    mainCol.append(
       h(
         'div',
-        { class: 'row-between', 'data-html2canvas-ignore': 'true' },
+        { class: 'row-between', 'data-html2canvas-ignore': 'true', style: 'align-items: center;' },
         h('span', { class: 'caption font-bold' }, 'ช่วงเวลาดูกราฟแนวโน้ม:'),
         h(
           'div',
@@ -170,7 +218,7 @@ export function mount(root, { repo, store }) {
         );
       }
 
-      page.append(
+      mainCol.append(
         h(
           'div',
           { class: 'card chart-card' },
@@ -307,7 +355,7 @@ export function mount(root, { repo, store }) {
 
     // ----- เหตุการณ์ในกะ (สลับ pump / ล้าง) เพื่อให้รายงานที่แคปมีบริบท
     if (sw.length > 0) {
-      page.append(
+      sideCol.append(
         h(
           'div',
           { class: 'card' },

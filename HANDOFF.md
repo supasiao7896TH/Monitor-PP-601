@@ -1,13 +1,13 @@
 # HANDOFF.md — PP-601 Monitor (ส่งต่องาน มือถือ → PC บ้าน / PC เครื่องใหม่)
 
-อัปเดต: 2026-10-29 · Branch: `main` · Unit Tests 75 ข้อผ่าน 100%
+อัปเดต: 2026-10-29 · Branch: `main` · Unit Tests 81 ข้อผ่าน 100%
 
 ## สถานะ
 | ส่วน | สถานะ |
 |---|---|
-| หน้าจอ 4 แท็บ (จด / รายงานกะ / ประวัติ / ตั้งค่า) | ✅ เสร็จ ทดสอบใน Chromium มือถือ 390px |
-| กราฟความละเอียดสูง (Dual Y-Axis, Dynamic Zoom, 220px) | ✅ เสร็จ มีปุ่มเลือก 24 ชม. (8 รอบ) / 48 ชม. / 7 วัน + แสดงค่าล่าสุด |
-| `shift-logic`, `import-excel`, `line-parser`, `worker-d1` unit test | ✅ 75 ข้อผ่าน (เขียนแดงก่อน แล้วทำเขียว) |
+| หน้าจอ Dashboard สำหรับ PC (Control Room Widescreen) | ✅ เสร็จ 2-Column Grid (สถานะปั๊มสด + ตารางรอบจดด้านซ้าย / กราฟแนวโน้ม Widescreen ด้านขวา) และ Header Topbar Nav |
+| กราฟความละเอียดสูง (Dual Y-Axis, Dynamic Zoom, 320px) | ✅ เสร็จ กราฟ Widescreen บน PC พร้อมปุ่มเลือก 24 ชม. (8 รอบ) / 48 ชม. / 7 วัน + แสดงค่าล่าสุด |
+| Unit Tests (Vitest) | ✅ 81 ข้อผ่าน 100% (รวม route-logic PC default) |
 | นำเข้าประวัติข้อมูลจาก Excel | ✅ เสร็จ สกัด 1,003 unique readings + 12 events จาก Excel รองรับทั้ง LocalStorage และ Firestore |
 | LINE Bot Webhook Parser & Worker | ✅ เขียนแล้วและ Deploy ขึ้น Cloudflare Workers พร้อมตั้ง `LINE_CHANNEL_SECRET` + `LINE_CHANNEL_ACCESS_TOKEN` เรียบร้อย |
 | Cloudflare D1 Database (`pp601-db`) | ✅ สร้างตาราง `readings` + Indexes + ผูก binding `env.DB` + มี API `/api/readings` (GET/POST) |

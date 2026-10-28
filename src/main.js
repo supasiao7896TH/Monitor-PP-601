@@ -12,13 +12,16 @@ import * as recordView from './views/record.js';
 import * as reportView from './views/report.js';
 import * as historyView from './views/history.js';
 import * as settingsView from './views/settings.js';
+import { resolveTab, DEFAULT_TAB, TABS as TAB_DEFS } from './modules/route-logic.js';
 
-const TABS = [
-  { id: 'record', label: 'จด', view: recordView },
-  { id: 'report', label: 'รายงานกะ', view: reportView },
-  { id: 'history', label: 'ประวัติ', view: historyView },
-  { id: 'settings', label: 'ตั้งค่า', view: settingsView },
-];
+const VIEW_MAP = {
+  report: reportView,
+  record: recordView,
+  history: historyView,
+  settings: settingsView,
+};
+
+const TABS = TAB_DEFS.map((t) => ({ ...t, view: VIEW_MAP[t.id] }));
 
 const lsGet = (k) => {
   try {
@@ -50,7 +53,7 @@ const store = createStore({
   limits: { ...DEFAULT_LIMITS },
   name: lsGet('pp601-name') ?? '',
   theme: lsGet('pp601-theme') ?? 'auto',
-  tab: 'record',
+  tab: DEFAULT_TAB,
 });
 store.on('name', (v) => lsSet('pp601-name', v));
 
@@ -60,16 +63,40 @@ let unmount = () => {};
 
 function renderShell() {
   clear(app);
-  const nav = h(
+  // เมนูด้านล่างสำหรับจอมือถือ (ซ่อนอัตโนมัติบนจอ PC)
+  const bottomNav = h(
     'nav',
-    { class: 'bottom-nav', 'aria-label': 'เมนูหลัก' },
-    TABS.map((t) => h('a', { href: `#/${t.id}`, id: `tab-${t.id}`, class: 'nav-item' }, t.label)),
+    { class: 'bottom-nav', 'aria-label': 'เมนูหลักมือถือ' },
+    TABS.map((t) => h('a', { href: `#/${t.id}`, id: `mob-tab-${t.id}`, class: 'nav-item' }, t.label)),
   );
+
+  // เมนูด้านบน Header สำหรับจอ PC Desktop Widescreen
+  const topNav = h(
+    'nav',
+    { class: 'top-nav', 'aria-label': 'เมนูหลักเดสก์ท็อป' },
+    TABS.map((t) => h('a', { href: `#/${t.id}`, id: `tab-${t.id}`, class: 'nav-link' }, t.label)),
+  );
+
   app.append(
-    h('header', { class: 'topbar' }, h('span', { class: 'brand' }, 'PP-601'), h('span', { class: 'caption' }, 'Hot oil pump temp'), h('span', { id: 'net', class: 'chip chip-neutral' }, '')),
+    h(
+      'header',
+      { class: 'topbar' },
+      h(
+        'div',
+        { class: 'brand-wrap' },
+        h('span', { class: 'brand' }, 'PP-601'),
+        h('span', { class: 'caption' }, 'Hot oil pump monitor'),
+      ),
+      topNav,
+      h(
+        'div',
+        { class: 'topbar-actions' },
+        h('span', { id: 'net', class: 'chip chip-neutral' }, ''),
+      ),
+    ),
     h('div', { id: 'webview' }),
     h('main', { id: 'view', class: 'view' }),
-    nav,
+    bottomNav,
   );
   updateNet();
 }
@@ -100,11 +127,18 @@ function webViewBanner() {
 
 function route() {
   unmount();
-  const id = (location.hash.replace('#/', '') || 'record').split('?')[0];
+  const id = resolveTab(location.hash);
   const tab = TABS.find((t) => t.id === id) ?? TABS[0];
   store.set('tab', tab.id);
-  TABS.forEach((t) => document.getElementById(`tab-${t.id}`)?.toggleAttribute('aria-current', t.id === tab.id));
+
+  // อัปเดต active tab ให้ทั้ง Desktop Topbar และ Mobile Nav
+  TABS.forEach((t) => {
+    document.getElementById(`tab-${t.id}`)?.toggleAttribute('aria-current', t.id === tab.id);
+    document.getElementById(`mob-tab-${t.id}`)?.toggleAttribute('aria-current', t.id === tab.id);
+  });
   document.getElementById(`tab-${tab.id}`)?.setAttribute('aria-current', 'page');
+  document.getElementById(`mob-tab-${tab.id}`)?.setAttribute('aria-current', 'page');
+
   const view = document.getElementById('view');
   clear(view);
   try {
