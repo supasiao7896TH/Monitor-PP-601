@@ -5,6 +5,7 @@
 **URL ใช้งานจริง:** [https://monitor-pp-601.supasiao.workers.dev](https://monitor-pp-601.supasiao.workers.dev)  
 **LINE Bot:** `@964jzoqe` (ชื่อ: `Monitor PP-601`)  
 **Excel ปลายทาง:** `K:\PE1\Daily report PTA1\Monitor temp pump PP-601.xlsx`  
+**Excel Hyperlink Formula:** `=HYPERLINK("https://monitor-pp-601.supasiao.workers.dev", "🌐 เปิดระบบ Monitor PP-601")`  
 **Skill ต้นแบบ:** [LINE Bot Edge & Excel Sync (docs/skills/line-bot-edge-sync.md)](docs/skills/line-bot-edge-sync.md)
 
 ---
