@@ -16,6 +16,7 @@
 | ปุ่มบันทึกรายงานเป็นรูป | ✅ ทดสอบโหมดดาวน์โหลดแล้ว · ❌ ยังไม่ทดสอบแชร์เข้า LINE บนมือถือจริง |
 | Firebase (Firestore + Anonymous Auth) | ⚠️ ทางเลือกสำรอง (ปัจจุบันใช้ Cloudflare D1 เป็นหลัก ฟรีและครบวงจรในตัว) |
 | Deploy Cloudflare Workers | ✅ Deploy สำเร็จแล้วที่ `https://monitor-pp-601.supasiao.workers.dev` (Account ID: `e87e6b4e...`) |
+| Industrial Skill Documentation | ✅ สรุปและถอดองค์ความรู้เป็น Skill `line-bot-edge-sync` พร้อมสำเนาไว้ที่ `docs/skills/line-bot-edge-sync.md` |
 
 ---
 

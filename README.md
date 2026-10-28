@@ -1,34 +1,46 @@
 # PP-601 Monitor
 
-เว็บแอปบันทึกอุณหภูมิ PP-601A/B/C (hot oil loop) ทุก 3 ชม. · สลับ pump · งานล้าง pump/oil cooler · รายงานกะ (ตาราง + กราฟ)
+ระบบติดตามและบันทึกอุณหภูมิน้ำมันร้อน Hot Oil Pump PP-601A/B/C อัตโนมัติครบวงจร (GC-M PTA นิคมฯ มาบตาพุด)
 
-- Stack: Vite + ES Modules + Firebase (Firestore real-time, Anonymous Auth) + Chart.js + Vitest · deploy Cloudflare Workers
-- โมดูลหลัก: `src/modules/shift-logic.js` (ฟังก์ชันล้วน ทดสอบด้วย Vitest) · `cloud-sync-manager.js` (Firestore) · `repo-local.js` (โหมดทดลอง)
+**URL ใช้งานจริง:** [https://monitor-pp-601.supasiao.workers.dev](https://monitor-pp-601.supasiao.workers.dev)  
+**LINE Bot:** `@964jzoqe` (ชื่อ: `Monitor PP-601`)  
+**Excel ปลายทาง:** `K:\PE1\Daily report PTA1\Monitor temp pump PP-601.xlsx`  
+**Skill ต้นแบบ:** [LINE Bot Edge & Excel Sync (docs/skills/line-bot-edge-sync.md)](docs/skills/line-bot-edge-sync.md)
 
-## รันในเครื่อง
+---
+
+## 🏛️ สถาปัตยกรรม 4 ประสาน (4-Tier Architecture)
+
+1. **LINE Messaging API:** Field Operator (F/O) พิมพ์ค่าในกลุ่ม LINE (เช่น `22:00 A 125/77 C 128/94`) บอทคำนวณ Diff แจ้งเตือน และตอบกลับยืนยันทันที
+2. **Cloudflare Workers & D1:** Cloudflare Edge ตรวจสอบ HMAC-SHA256 Signature และบันทึกข้อมูลลง D1 Serverless SQL พร้อมให้บริการ REST API (`/api/readings`) ตลอด 24 ชม.
+3. **Web Dashboard:** แสดงผลกราฟความละเอียดสูง Dual Y-Axis (Chart.js), สรุปรายงานกะเช้า/กะดึก, และ Export ภาพรายงานส่งเข้า LINE
+4. **Office Shared PC Automation:** Windows Task Scheduler บนเครื่อง B/M รันสคริปต์ PowerShell COM ดึงข้อมูลจาก Cloudflare API ไปหยอดลงไฟล์ Excel บนไดรฟ์เครือข่าย `K:` อัตโนมัติทุก 30 นาที (รองรับผู้ใช้ผลัดเวร 4 คน ผ่าน `C:\ProgramData\PP601-Monitor`)
+
+---
+
+## 💻 การติดตั้งบนเครื่อง PC ใหม่ (1-Click Setup)
+
+เมื่อเปลี่ยนเครื่องคอมพิวเตอร์ใหม่ ให้เปิด Terminal หรือคลิกขวาที่ไฟล์:
+```powershell
+powershell -ExecutionPolicy Bypass -File "./scripts/setup-new-pc.ps1"
+```
+สคริปต์จะตั้งค่าโฟลเดอร์กลาง `C:\ProgramData\PP601-Monitor`, ตรวจสอบไดรฟ์ `K:`, ลงทะเบียน Task Scheduler และสร้าง Shortcuts บน Desktop ให้เสร็จสิ้นอัตโนมัติ
+
+---
+
+## 🧪 การทดสอบและรันในเครื่อง (Local Development)
 
 ```bash
 npm ci
-npm run dev        # เปิดแอป (ถ้ายังไม่ตั้ง Firebase จะเป็น "โหมดทดลองในเครื่อง")
-npm test           # unit test
-npm run check      # test + build (เหมือน CI)
+npm test        # รัน 75 unit tests (Vitest)
+npm run check   # รัน tests + build production
+npm run dev     # รัน Vite dev server สำหรับแก้ไข UI
 ```
 
-## ตั้งค่า Firebase (ครั้งเดียว)
+---
 
-1. console.firebase.google.com → สร้าง project → เพิ่ม **Web app** → คัดลอก `firebaseConfig` ไปวางใน `src/firebase-config.js`
-2. เปิด **Firestore Database** (production mode)
-3. เปิด **Authentication → Sign-in method → Anonymous**
-4. deploy กฎความปลอดภัย: `npx firebase-tools deploy --only firestore:rules --project <PROJECT_ID>` (หรือวางเนื้อหา `firestore.rules` ในหน้า Rules ของ console)
+## 📋 ข้อกำหนดทางวิศวกรรม (Engineering Specifications)
 
-## Deploy (Cloudflare Workers)
-
-1. สร้าง API Token สิทธิ์ "Edit Cloudflare Workers" เท่านั้น → ตั้งเป็น GitHub Secret ชื่อ `CLOUDFLARE_API_TOKEN`
-2. ถ้าบัญชี Cloudflare มีหลาย account ให้เพิ่ม `account_id` ใน `wrangler.jsonc`
-3. push/merge เข้า `main` → workflow `CI` รัน test + build แล้ว deploy อัตโนมัติ
-
-## ข้อควรรู้
-
-- ไม่มีหน้า login: ใช้ Anonymous Auth เบื้องหลัง + ชื่อผู้จด ใครมีลิงก์ก็เขียนข้อมูลได้ ห้ามลบข้อมูล (ยกเลิกรายการแทน)
-- เกณฑ์เตือนตั้งในหน้า "ตั้งค่า": TG-3603 ต้อง > 70 (ยืนยันแล้ว) · Diff ≥ 20 เป็นข้อสันนิษฐานที่ยังไม่ได้ยืนยันกับหน้างาน
-- slot: 22/01/04/07/10/13/16/19 น. · กะเช้า 07:30–19:30 · กะดึก 19:30–07:30
+- **เกณฑ์อุณหภูมิ:** TG-3602 (Inlet) / TG-3603 (Outlet ต้อง > 70°C) / Diff = TG-3602 − TG-3603 (เกณฑ์เตือน ≥ 20°C)
+- **รอบการจดบันทึก:** ทุก 3 ชั่วโมง (22:00, 01:00, 04:00, 07:00, 10:00, 13:00, 16:00, 19:00 น.)
+- **กะการทำงาน:** กะเช้า 07:30–19:30 น. / กะดึก 19:30–07:30 น. (เวลาไทย UTC+7)
