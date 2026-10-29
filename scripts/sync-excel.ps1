@@ -7,6 +7,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Security Guard: Script must only run on Local Drive (C:), never from Network Share (K:, D:\GCMSection, UNC)
+if ($PSScriptRoot -match '^(K:|\\\\|D:\\GCMSection)') {
+    Write-Error "SECURITY POLICY VIOLATION: sync-excel.ps1 must NOT be stored or executed from a Network Share. Corporate FSRM blocks scripts on server shares. Please execute from C:\ProgramData\PP601-Monitor."
+    exit 1
+}
+
 Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Starting PP-601 Excel Sync..."
 
 # 1. Fetch readings from Cloudflare D1

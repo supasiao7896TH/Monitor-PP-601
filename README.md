@@ -27,6 +27,9 @@ powershell -ExecutionPolicy Bypass -File "./scripts/setup-new-pc.ps1"
 ```
 สคริปต์จะตั้งค่าโฟลเดอร์กลาง `C:\ProgramData\PP601-Monitor`, ตรวจสอบไดรฟ์ `K:`, ลงทะเบียน Task Scheduler และสร้าง Shortcuts บน Desktop ให้เสร็จสิ้นอัตโนมัติ
 
+> ⚠️ **กฎความปลอดภัยเครือข่ายองค์กร (FSRM Policy):**  
+> ห้ามคัดลอกโฟลเดอร์ `scripts` หรือไฟล์ `.ps1` ไปวางบนไดรฟ์เครือข่าย `K:\` หรือ File Server เด็ดขาด (ระบบ Windows Server FSRM จะบล็อกเป็น Executable File และส่ง Alert ความปลอดภัย) สคริปต์และตัวติดตั้งทั้งหมดต้องรันและจัดเก็บบนไดรฟ์เครื่อง Local `C:\` เท่านั้น โดยตัวสคริปต์จะเชื่อมต่อเปิดไฟล์ Excel จากไดรฟ์ `K:\` เองอัตโนมัติ
+
 ---
 
 ## 🧪 การทดสอบและรันในเครื่อง (Local Development)

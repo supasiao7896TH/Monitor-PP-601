@@ -2,6 +2,12 @@
 # Setup PP-601 Monitor on a New PC (Multi-User Shared PC Ready)
 $ErrorActionPreference = "Stop"
 
+# Security Guard: Setup must only run from Local Drive (C:), never from Network Share (K:, D:\GCMSection, UNC)
+if ($PSScriptRoot -match '^(K:|\\\\|D:\\GCMSection)') {
+    Write-Error "SECURITY POLICY VIOLATION: setup-new-pc.ps1 must NOT be run from a Network Share (K:). Corporate FSRM blocks script files. Please copy the project folder to local disk C: before running setup."
+    exit 1
+}
+
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host "   PP-601 Monitor: 1-Click Multi-User Setup for PC" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan

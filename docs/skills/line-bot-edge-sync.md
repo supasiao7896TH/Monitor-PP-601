@@ -257,6 +257,9 @@ finally {
 3. **ตั้ง Task Scheduler ระดับระบบ:**
    - รันคำสั่ง PowerShell ทุก 30 นาที
    - ติ๊ก `StartWhenAvailable` และ `AllowStartIfOnBatteries`
+4. **กฎความปลอดภัยเครือข่ายองค์กร (FSRM Policy):**
+   - **ห้าม** วางไฟล์ Script (`.ps1`, `.bat`) บน Network Drive (`K:\`, `\\server\share`) เด็ดขาด เพราะระบบ File Screening Management (FSRM) ของ Windows Server จะจัดเป็น "Executable Files" และบล็อกพร้อมส่ง Alert อีเมล
+   - วางเฉพาะไฟล์ `.xlsx` (Data) บน Network Drive และเก็บ Script ทั้งหมดไว้บน Local Disk `C:\` เสมอ
 
 ### 1-Click Setup Template (`scripts/setup-new-pc.ps1`)
 เมื่อเปลี่ยนเครื่องใหม่ ให้รันสคริปต์นี้เพียงครั้งเดียว:
