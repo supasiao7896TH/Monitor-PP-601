@@ -376,7 +376,7 @@ export function mount(root, { repo, store }) {
         ),
       );
     }
-    page.append(h('p', { class: 'caption center' }, `ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`));
+    page.append(createReportBrandFooter(limits));
     renderLong();
   }
 
@@ -485,7 +485,7 @@ export function mount(root, { repo, store }) {
     }
 
     if (count === 0) return void shot.remove();
-    shot.append(h('p', { class: 'caption center' }, `ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`));
+    shot.append(createReportBrandFooter(limits));
     longPage.prepend(
       h(
         'div',
@@ -641,4 +641,18 @@ function limitText(l) {
   if (l.tg3603Target != null) parts.push(`TG-3603 ${dir[l.tg3603Direction]} ${l.tg3603Target}`);
   if (l.diffTarget != null) parts.push(`Diff ${dir[l.diffDirection]} ${l.diffTarget}`);
   return parts.join(' · ') || 'ไม่ได้ตั้ง';
+}
+
+function createReportBrandFooter(limits) {
+  return h(
+    'div',
+    { class: 'report-footer-brand' },
+    h('img', { src: '/branding/aicoder-badge-2025.png', class: 'report-brand-badge', alt: 'A(i)CODER 2025' }),
+    h(
+      'div',
+      { class: 'report-brand-meta' },
+      h('div', { class: 'report-brand-title' }, 'A-Class WebCraft | Code • Share • Inspire | by Supasit.A'),
+      h('div', { class: 'caption num' }, `GC-M PTA · ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`),
+    ),
+  );
 }

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64" width="300" height="64" role="img" aria-label="A(i)CODER by Supasit.A">
+  <title>A(i)CODER — Studio badge (light)</title>
+  <rect x="4" y="12" width="40" height="40" rx="11" fill="#1D4ED8"/>
+  <path d="M15.5 41 L24 22 L32.5 41" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M19.4 34 H28.6" fill="none" stroke="#FFFFFF" stroke-width="3.3" stroke-linecap="round"/>
+  <circle cx="35.5" cy="22.5" r="2.4" fill="#F2B705"/>
+  <text x="56" y="31" font-family="'Noto Sans Thai','Segoe UI',system-ui,sans-serif" font-size="17" font-weight="700"
+        letter-spacing=".5" fill="#131829">A<tspan fill="#8A6410">(i)</tspan>CODER</text>
+  <text x="56" y="47" font-family="'Noto Sans Thai','Segoe UI',system-ui,sans-serif" font-size="10.5" font-weight="500"
+        letter-spacing=".08em" fill="#5F6980">CODE · SHARE · INSPIRE</text>
+</svg>

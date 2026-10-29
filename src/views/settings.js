@@ -133,6 +133,22 @@ export function mount(root, { repo, store, applyTheme }) {
         seedBtn,
       ),
       h('section', { class: 'card stack' }, h('h2', {}, 'ทั่วไป'), h('label', { for: 'st-theme' }, 'ธีม'), theme, h('button', { class: 'btn btn-outline', type: 'button', onclick: exportCsv }, 'ส่งออก CSV (ย้อนหลัง 31 วัน)')),
+      h(
+        'section',
+        { class: 'card brand-card' },
+        h(
+          'div',
+          { class: 'brand-card-row' },
+          h(
+            'div',
+            {},
+            h('h3', {}, 'A(i)CODER 2025 Studio'),
+            h('p', { class: 'caption' }, 'A-Class WebCraft | Code • Share • Inspire | by Supasit.A'),
+            h('p', { class: 'caption' }, 'GC-M PTA (PTTGC Group) · Map Ta Phut, Rayong'),
+          ),
+          h('img', { src: '/branding/aicoder-badge-2025.png', class: 'brand-card-img', alt: 'A(i)CODER' }),
+        ),
+      ),
       h('p', { class: 'caption center' }, `v${APP_VERSION} · ${repo.mode === 'firebase' ? 'เชื่อมต่อ Firebase (real-time)' : 'โหมดทดลองในเครื่อง — ยังไม่ sync'} · A-Class WebCraft · by Supasit.A`),
     ),
   );

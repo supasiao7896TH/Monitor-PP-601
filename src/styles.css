@@ -154,12 +154,24 @@ h3 {
 }
 .brand-wrap {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
+}
+.brand-logo-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
 }
 .brand {
   font-weight: 700;
   font-size: 17px;
+  line-height: 1.2;
   letter-spacing: 0.02em;
   color: var(--text);
 }
@@ -731,6 +743,77 @@ label {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* ---------- Branding: A(i)CODER Studio & 2025 Badge ---------- */
+.report-footer-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-top: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  box-shadow: var(--shadow-1);
+}
+
+.report-brand-badge {
+  height: 38px;
+  width: auto;
+  object-fit: contain;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.report-brand-meta {
+  display: flex;
+  flex-direction: column;
+  text-align: right;
+  gap: 2px;
+}
+
+.report-brand-title {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.brand-card {
+  border-left: 4px solid var(--accent);
+}
+
+.brand-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand-card-img {
+  height: 48px;
+  width: auto;
+  border-radius: 8px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-1);
+}
+
+@media (max-width: 600px) {
+  .report-footer-brand {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+  }
+  .report-brand-meta {
+    text-align: center;
+  }
+  .brand-card-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 @media (min-width: 768px) {

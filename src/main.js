@@ -83,8 +83,13 @@ function renderShell() {
       h(
         'div',
         { class: 'brand-wrap' },
-        h('span', { class: 'brand' }, 'PP-601'),
-        h('span', { class: 'caption' }, 'Hot oil pump monitor'),
+        h('img', { src: '/branding/studio-icon.svg', class: 'brand-logo-icon', alt: 'A(i)CODER Studio' }),
+        h(
+          'div',
+          { class: 'brand-text' },
+          h('span', { class: 'brand' }, 'PP-601'),
+          h('span', { class: 'caption' }, 'Hot oil pump monitor · A(i)CODER'),
+        ),
       ),
       topNav,
       h(
