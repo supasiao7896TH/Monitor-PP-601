@@ -646,13 +646,8 @@ function limitText(l) {
 function createReportBrandFooter(limits) {
   return h(
     'div',
-    { class: 'report-footer-brand' },
-    h('img', { src: '/branding/aicoder-badge-2025.png', class: 'report-brand-badge', alt: 'A(i)CODER 2025' }),
-    h(
-      'div',
-      { class: 'report-brand-meta' },
-      h('div', { class: 'report-brand-title' }, 'A-Class WebCraft | Code • Share • Inspire | by Supasit.A'),
-      h('div', { class: 'caption num' }, `GC-M PTA · ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`),
-    ),
+    { class: 'report-footer-clean' },
+    h('p', { class: 'caption center' }, `ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`),
+    h('p', { class: 'caption center brand-subtext' }, 'A-Class WebCraft | Code • Share • Inspire | by Supasit.A · GC-M PTA'),
   );
 }

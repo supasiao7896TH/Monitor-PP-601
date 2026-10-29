@@ -154,24 +154,12 @@ h3 {
 }
 .brand-wrap {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
-}
-.brand-logo-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-.brand-text {
-  display: flex;
-  flex-direction: column;
 }
 .brand {
   font-weight: 700;
   font-size: 17px;
-  line-height: 1.2;
   letter-spacing: 0.02em;
   color: var(--text);
 }
@@ -643,6 +631,121 @@ label {
   grid-template-columns: 1fr;
   gap: 10px;
 }
+@media (min-width: 768px) {
+  .pump-status-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.tbl-card {
+  padding: 16px;
+  overflow: visible;
+}
+.tbl-wrap {
+  padding: 0;
+  overflow-x: auto;
+  width: 100%;
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.tbl th, .tbl td {
+  padding: 8px 12px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+.tbl thead th {
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-weight: 600;
+}
+.tbl thead th.grp {
+  text-align: center;
+  color: var(--accent-2);
+  font-size: 14px;
+}
+.tbl tbody th {
+  text-align: left;
+  font-weight: 600;
+}
+.side-pump-card {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.side-pump-run {
+  border-left: 4px solid var(--ok);
+  background: color-mix(in srgb, var(--ok-soft) 25%, var(--surface));
+}
+.side-pump-standby {
+  border-left: 4px solid var(--border-strong);
+  opacity: 0.85;
+}
+.side-pump-clean {
+  border-left: 4px solid var(--warn);
+  background: color-mix(in srgb, var(--warn-soft) 25%, var(--surface));
+}
+.side-pump-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14.5px;
+}
+.side-pump-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.side-pump-run .side-pump-badge {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.side-pump-standby .side-pump-badge {
+  background: var(--surface-3);
+  color: var(--text-3);
+}
+.side-pump-clean .side-pump-badge {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.side-pump-temps {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+.report-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---------- Report Footer Clean Typography ---------- */
+.report-footer-clean {
+  margin-top: 14px;
+  padding: 8px 0;
+  text-align: center;
+}
+.brand-subtext {
+  color: var(--text-3);
+  font-size: 12px;
+  margin-top: 4px;
+  letter-spacing: 0.02em;
+}
+
 @media (min-width: 768px) {
   .pump-status-cards {
     grid-template-columns: repeat(3, 1fr);
