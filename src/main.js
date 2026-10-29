@@ -95,9 +95,29 @@ function renderShell() {
     ),
     h('div', { id: 'webview' }),
     h('main', { id: 'view', class: 'view' }),
+    renderNeonDock(),
     bottomNav,
   );
   updateNet();
+}
+
+function renderNeonDock() {
+  return h(
+    'footer',
+    { class: 'neon-brand-dock', 'aria-label': 'A(i)CODER 2025 Branding' },
+    h('img', {
+      src: '/branding/d1-neon-arcade-bare.svg',
+      class: 'neon-brand-light',
+      alt: 'A(i)CODER 2025 Neon Arcade',
+      loading: 'lazy',
+    }),
+    h('img', {
+      src: '/branding/d2-crt-night-bare.svg',
+      class: 'neon-brand-dark',
+      alt: 'A(i)CODER 2025 Neon Arcade',
+      loading: 'lazy',
+    }),
+  );
 }
 
 function updateNet() {

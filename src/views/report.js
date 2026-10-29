@@ -647,6 +647,22 @@ function createReportBrandFooter(limits) {
   return h(
     'div',
     { class: 'report-footer-clean' },
+    h(
+      'div',
+      { class: 'report-neon-brand' },
+      h('img', {
+        src: '/branding/d1-neon-arcade-bare.svg',
+        class: 'neon-brand-light',
+        alt: 'A(i)CODER 2025 Neon Arcade',
+        loading: 'lazy',
+      }),
+      h('img', {
+        src: '/branding/d2-crt-night-bare.svg',
+        class: 'neon-brand-dark',
+        alt: 'A(i)CODER 2025 Neon Arcade',
+        loading: 'lazy',
+      }),
+    ),
     h('p', { class: 'caption center' }, `ออกรายงาน ${new Date().toLocaleString('th-TH-u-ca-gregory', { timeZone: 'Asia/Bangkok' })} · เกณฑ์: ${limitText(limits)}`),
     h('p', { class: 'caption center brand-subtext' }, 'A-Class WebCraft | Code • Share • Inspire | by Supasit.A · GC-M PTA'),
   );
