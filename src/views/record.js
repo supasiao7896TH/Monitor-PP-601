@@ -48,7 +48,24 @@ export function mount(root, { repo, store }) {
   const statusBox = h('section', { class: 'card' });
   const shiftBox = h('section', { class: 'card' });
   const formBox = h('section', { class: 'card' });
-  page.append(statusBox, shiftBox, formBox);
+  const brandBanner = h(
+    'div',
+    { class: 'home-neon-brand', 'aria-label': 'A(i)CODER 2025 Branding' },
+    h('img', {
+      src: '/branding/d1-neon-arcade-bare.svg',
+      class: 'neon-brand-light',
+      alt: 'A(i)CODER 2025 Neon Arcade',
+      loading: 'lazy',
+    }),
+    h('img', {
+      src: '/branding/d2-crt-night-bare.svg',
+      class: 'neon-brand-dark',
+      alt: 'A(i)CODER 2025 Neon Arcade',
+      loading: 'lazy',
+    }),
+  );
+
+  page.append(brandBanner, statusBox, shiftBox, formBox);
 
   const nameInput = h('input', {
     id: 'rec-name',

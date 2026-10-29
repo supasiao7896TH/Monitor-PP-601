@@ -793,8 +793,18 @@ label {
   }
 }
 
+.home-neon-brand {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 6px auto 14px auto;
+  padding: 0 16px;
+  width: 100%;
+}
+
+.home-neon-brand img,
 .neon-brand-dock img {
-  width: 270px;
+  width: 260px;
   max-width: 86vw;
   height: auto;
   aspect-ratio: 1320 / 420;
@@ -803,6 +813,12 @@ label {
   -webkit-user-drag: none;
   filter: drop-shadow(0 0 14px rgba(179, 157, 243, 0.22));
 }
+
+#view[data-tab='record'] ~ .neon-brand-dock {
+  display: none !important;
+}
+
+
 
 @media (min-width: 768px) {
   .top-nav {

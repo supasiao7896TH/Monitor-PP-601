@@ -160,6 +160,7 @@ function route() {
 
   const view = document.getElementById('view');
   if (!view) return;
+  view.dataset.tab = tab.id;
   clear(view);
   try {
     unmount = tab.view.mount(view, { repo, store, applyTheme });
