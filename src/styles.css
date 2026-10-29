@@ -793,8 +793,7 @@ label {
   }
 }
 
-.neon-brand-dock img,
-.report-neon-brand img {
+.neon-brand-dock img {
   width: 270px;
   max-width: 86vw;
   height: auto;
@@ -803,13 +802,6 @@ label {
   user-select: none;
   -webkit-user-drag: none;
   filter: drop-shadow(0 0 14px rgba(179, 157, 243, 0.22));
-}
-
-.report-neon-brand {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 8px;
 }
 
 @media (min-width: 768px) {
