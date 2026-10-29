@@ -128,4 +128,20 @@ Temp gauge = 125/92`;
     expect(await verifyLineSignature(body, 'invalid-signature', secret)).toBe(false);
     expect(await verifyLineSignature(body, validSig, 'wrong-secret')).toBe(false);
   });
+
+  it('ตรวจจับคำสั่งบอท status, สถานะ, สรุป, help', () => {
+    const s1 = parseLineMessage('status');
+    expect(s1.isCommand).toBe(true);
+    expect(s1.command).toBe('status');
+
+    const s2 = parseLineMessage('สรุป');
+    expect(s2.isCommand).toBe(true);
+    expect(s2.command).toBe('status');
+
+    const h = parseLineMessage('help');
+    expect(h.isCommand).toBe(true);
+    expect(h.command).toBe('help');
+    expect(h.replyText).toBeDefined();
+    expect(h.replyText).toContain('วิธีใช้งานบอท');
+  });
 });

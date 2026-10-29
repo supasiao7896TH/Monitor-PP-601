@@ -41,10 +41,33 @@ foreach ($r in $readings) {
     $readingsBySlot[$slotKey][$r.pump] = $r
 }
 
-# 2. Open Excel via COM
+# 2. Check File Lock and Open Excel via COM
 if (-not (Test-Path $ExcelPath)) {
     Write-Error "Excel file not found at: $ExcelPath"
     exit 1
+}
+
+# Function to test file lock without crashing
+function Test-ExcelLocked {
+    param([string]$FilePath)
+    try {
+        $fileStream = [System.IO.File]::Open($FilePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        if ($fileStream) {
+            $fileStream.Close()
+            $fileStream.Dispose()
+        }
+        return $false
+    } catch [System.IO.IOException] {
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+if (Test-ExcelLocked -FilePath $ExcelPath) {
+    Write-Warning "[FILE LOCK] Excel file is currently open by another user or process ($ExcelPath)."
+    Write-Host "[WARN] Skipping sync this cycle to avoid collision. Will retry automatically next scheduled run."
+    exit 0
 }
 
 $excel = New-Object -ComObject Excel.Application
@@ -57,6 +80,24 @@ try {
     $wb = $excel.Workbooks.Open($ExcelPath, $false, $false)
     $ws = $wb.Sheets.Item(1)
     $lastRow = $ws.UsedRange.Rows.Count
+
+    # Check template remaining headroom
+    $unfilledRows = 0
+    for ($checkRow = $lastRow; $checkRow -ge 6; $checkRow--) {
+        $hasValA = $ws.Cells.Item($checkRow, 3).Value2
+        $hasValC = $ws.Cells.Item($checkRow, 7).Value2
+        if (-not $hasValA -and -not $hasValC) {
+            $unfilledRows++
+        } else {
+            break
+        }
+    }
+    if ($unfilledRows -lt 24) {
+        $daysLeft = [Math]::Round($unfilledRows / 8, 1)
+        Write-Warning "[TEMPLATE ALERT] Only $unfilledRows empty slot(s) (~$daysLeft days) remaining in Excel! Please prepare next month's template rows soon."
+    } else {
+        Write-Host "Template headroom: $unfilledRows empty slot(s) remaining."
+    }
 
     $currentDate = $null
 

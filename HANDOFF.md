@@ -1,21 +1,19 @@
 # HANDOFF.md — PP-601 Monitor (ส่งต่องาน มือถือ → PC บ้าน / PC เครื่องใหม่)
 
-อัปเดต: 2026-10-29 · Branch: `main` · Unit Tests 81 ข้อผ่าน 100%
+อัปเดต: 2026-10-29 (หลังจบ 4-Phase System Enhancement) · Branch: `main` · Unit Tests 84 ข้อผ่าน 100%
 
 ## สถานะ
 | ส่วน | สถานะ |
 |---|---|
-| หน้าจอ Dashboard สำหรับ PC (Control Room Widescreen) | ✅ เสร็จ 3-Column Header Grid + ตารางบันทึกกะ Full-Width ไร้ Scrollbar (PP-601C ชัดเจน 100% ไม่ถูกตัด) + กราฟแนวโน้มเต็มจอ และ Header Topbar Nav |
+| หน้าจอ Dashboard สำหรับ PC (Control Room Widescreen) | ✅ เสร็จ 3-Column Header Grid + ตาราง Full-Width + กราฟแนวโน้มเต็มจอ + **Auto-Polling ทุก 60 วินาที** (อัปเดตเองไม่ง้อเมาส์) |
+| Web Bundle Optimization | ✅ **ลดขนาด Bundle จาก 838 kB เหลือ 214 kB (-74%)** ด้วย Dynamic Import Firebase |
 | กราฟความละเอียดสูง (Dual Y-Axis, Dynamic Zoom, 320px) | ✅ เสร็จ กราฟ Widescreen บน PC พร้อมปุ่มเลือก 24 ชม. (8 รอบ) / 48 ชม. / 7 วัน + แสดงค่าล่าสุด |
-| Unit Tests (Vitest) | ✅ 81 ข้อผ่าน 100% (รวม route-logic PC default) |
-| นำเข้าประวัติข้อมูลจาก Excel | ✅ เสร็จ สกัด 1,003 unique readings + 12 events จาก Excel รองรับทั้ง LocalStorage และ Firestore |
-| LINE Bot Webhook Parser & Worker | ✅ เขียนแล้วและ Deploy ขึ้น Cloudflare Workers พร้อมตั้ง `LINE_CHANNEL_SECRET` + `LINE_CHANNEL_ACCESS_TOKEN` เรียบร้อย |
-| Cloudflare D1 Database (`pp601-db`) | ✅ สร้างตาราง `readings` + Indexes + ผูก binding `env.DB` + มี API `/api/readings` (GET/POST) |
+| Unit Tests (Vitest) | ✅ **84 ข้อผ่าน 100%** (เพิ่มเทสต์ API D1 state/events และ LINE Bot commands) |
+| Cloudflare D1 Database (`pp601-db`) | ✅ ครบ 3 ตาราง: `readings`, `app_state` (status/limits), และ `events` (ไทม์ไลน์สลับปั๊ม/งานล้าง) ซิงก์ข้ามเครื่อง 100% |
+| LINE Bot Webhook & Interactive Commands | ✅ รองรับบันทึกอุณหภูมิ + **คำสั่งพิเศษ `status`, `สรุป`, `help`** ตอบสถานะปั๊ม 3 ตัวทันทีใน LINE |
 | ซิงก์อัตโนมัติ LINE ➔ D1 ➔ หน้าเว็บ | ✅ เสร็จสมบูรณ์ เมื่อ F/O ส่งใน LINE บอทเซฟลง D1 และหน้าเว็บดึงมาวาดกราฟอัตโนมัติ |
-| กรอกค่าลง Excel ไดรฟ์ K: อัตโนมัติ | ✅ ทำงานผ่าน Windows Task Scheduler `PP601-Excel-Sync` (รันเบื้องหลังทุก 30 นาที) + ยืนยันบันทึก 04:00/07:00 ลง Row 524-525 ครบถ้วน + Shortcut บน Desktop |
-| ปุ่มบันทึกรายงานเป็นรูป | ✅ ทดสอบโหมดดาวน์โหลดแล้ว · ❌ ยังไม่ทดสอบแชร์เข้า LINE บนมือถือจริง |
-| Firebase (Firestore + Anonymous Auth) | ⚠️ ทางเลือกสำรอง (ปัจจุบันใช้ Cloudflare D1 เป็นหลัก ฟรีและครบวงจรในตัว) |
-| Deploy Cloudflare Workers | ✅ Deploy สำเร็จแล้วที่ `https://monitor-pp-601.supasiao.workers.dev` (Account ID: `e87e6b4e...`) |
+| กรอกค่าลง Excel ไดรฟ์ K: อัตโนมัติ | ✅ ทำงานผ่าน Task Scheduler + **ระบบตรวจ File Lock นุ่มนวล** + **เตือนเมื่อแถวเทมเพลตเหลือ < 3 วัน** |
+| Deploy Cloudflare Workers | ✅ Deploy เวอร์ชันใหม่สำเร็จแล้วที่ `https://monitor-pp-601.supasiao.workers.dev` (Version ID: `a45b202a...`) |
 | Excel Hyperlink Shortcut | ✅ สูตร `=HYPERLINK("https://monitor-pp-601.supasiao.workers.dev", "🌐 เปิดระบบ Monitor PP-601")` สำหรับเปิด Web App จากในชีต |
 | Industrial Skill Documentation | ✅ สรุปและถอดองค์ความรู้เป็น Skill `line-bot-edge-sync` พร้อมสำเนาไว้ที่ `docs/skills/line-bot-edge-sync.md` |
 

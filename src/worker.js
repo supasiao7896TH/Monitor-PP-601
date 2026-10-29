@@ -50,6 +50,12 @@ export default {
             if (env.LINE_CHANNEL_ACCESS_TOKEN && event.replyToken) {
               ctx.waitUntil(sendLineReply(event.replyToken, parsed.replyText, env.LINE_CHANNEL_ACCESS_TOKEN));
             }
+          } else if (parsed.isCommand) {
+            if (parsed.command === 'status' && env.DB && env.LINE_CHANNEL_ACCESS_TOKEN && event.replyToken) {
+              ctx.waitUntil(handleStatusCommand(event.replyToken, env));
+            } else if (env.LINE_CHANNEL_ACCESS_TOKEN && event.replyToken && parsed.replyText) {
+              ctx.waitUntil(sendLineReply(event.replyToken, parsed.replyText, env.LINE_CHANNEL_ACCESS_TOKEN));
+            }
           }
         }
       }
@@ -134,14 +140,155 @@ export default {
       }
     }
 
-    // 3. Health check
+    // 3. /api/state — ซิงก์สถานะปั๊ม และเกณฑ์อุณหภูมิ (Key-Value)
+    if (url.pathname === '/api/state') {
+      if (!env.DB) {
+        return new Response(JSON.stringify({ ok: false, error: 'Database not configured' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+
+      if (request.method === 'OPTIONS') {
+        return new Response(null, {
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          },
+        });
+      }
+
+      if (request.method === 'POST') {
+        try {
+          const body = await request.json();
+          const { key, value, updatedBy } = body;
+          if (!key || value === undefined) {
+            return new Response(JSON.stringify({ ok: false, error: 'Missing key or value' }), { status: 400 });
+          }
+          await env.DB.prepare(`
+            INSERT INTO app_state (key, value, updatedBy, updatedAt)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value, updatedBy=excluded.updatedBy, updatedAt=excluded.updatedAt
+          `).bind(key, typeof value === 'string' ? value : JSON.stringify(value), updatedBy || '', Date.now()).run();
+
+          return new Response(JSON.stringify({ ok: true, key }), {
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ ok: false, error: err.message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+      }
+
+      if (request.method === 'GET') {
+        try {
+          const { results } = await env.DB.prepare('SELECT * FROM app_state').all();
+          const state = {};
+          (results ?? []).forEach((row) => {
+            state[row.key] = row;
+          });
+          return new Response(JSON.stringify({ ok: true, state }), {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-cache',
+            },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ ok: false, error: err.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+      }
+
+      return new Response('Method Not Allowed', { status: 405 });
+    }
+
+    // 4. /api/events — ไทม์ไลน์งานสลับปั๊ม / งานล้าง
+    if (url.pathname === '/api/events') {
+      if (!env.DB) {
+        return new Response(JSON.stringify({ ok: false, error: 'Database not configured' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+
+      if (request.method === 'OPTIONS') {
+        return new Response(null, {
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          },
+        });
+      }
+
+      if (request.method === 'POST') {
+        try {
+          const e = await request.json();
+          await env.DB.prepare(`
+            INSERT INTO events (id, type, at, pump, target, endAt, note, by, endedBy, createdAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              type=excluded.type, at=excluded.at, pump=excluded.pump, target=excluded.target,
+              endAt=excluded.endAt, note=excluded.note, by=excluded.by, endedBy=excluded.endedBy
+          `).bind(
+            e.id,
+            e.type,
+            Number(e.at),
+            e.pump || '',
+            e.target || '',
+            e.endAt != null ? Number(e.endAt) : null,
+            e.note || '',
+            e.by || '',
+            e.endedBy || null,
+            Number(e.createdAt || Date.now())
+          ).run();
+
+          return new Response(JSON.stringify({ ok: true, id: e.id }), {
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ ok: false, error: err.message }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+      }
+
+      if (request.method === 'GET') {
+        try {
+          const { results } = await env.DB.prepare('SELECT * FROM events ORDER BY at DESC LIMIT 100').all();
+          return new Response(JSON.stringify({ ok: true, count: (results ?? []).length, events: results ?? [] }), {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-cache',
+            },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ ok: false, error: err.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+      }
+
+      return new Response('Method Not Allowed', { status: 405 });
+    }
+
+    // 5. Health check
     if (url.pathname === '/api/health') {
       return new Response(JSON.stringify({ status: 'ok', worker: 'PP-601 LINE Bot', d1: !!env.DB, time: Date.now() }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
     }
 
-    // 4. Static Assets Fallback สำหรับหน้าเว็บ SPA
+    // 6. Static Assets Fallback สำหรับหน้าเว็บ SPA
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }
@@ -240,5 +387,36 @@ async function sendLineReply(replyToken, text, token) {
     }
   } catch (err) {
     console.error('sendLineReply exception:', err);
+  }
+}
+
+/**
+ * ดึงข้อมูลล่าสุดจาก D1 แล้วสรุปตอบกลับคำสั่ง status ในแชต LINE
+ */
+async function handleStatusCommand(replyToken, env) {
+  try {
+    const { results } = await env.DB.prepare('SELECT * FROM readings ORDER BY slotTime DESC LIMIT 6').all();
+    let reply = '📊 สรุปสถานะ PP-601 ล่าสุด:\n';
+    if (results && results.length > 0) {
+      const latest = {};
+      results.forEach((r) => {
+        if (!latest[r.pump]) latest[r.pump] = r;
+      });
+      ['A', 'B', 'C'].forEach((p) => {
+        const r = latest[p];
+        if (r) {
+          const isWarn = r.tg3603 < 70 || (r.diff != null && r.diff < 20);
+          reply += `• PP-601${p}: In ${r.tg3602}° / Out ${r.tg3603}° (Diff ${r.diff}°) ${isWarn ? '⚠️' : '🟢'}\n`;
+        } else {
+          reply += `• PP-601${p}: สแตนด์บาย (ยังไม่มีค่าเดินเครื่อง)\n`;
+        }
+      });
+      reply += '\n🌐 ดูรายละเอียด: https://monitor-pp-601.supasiao.workers.dev';
+    } else {
+      reply = 'ยังไม่มีข้อมูลในระบบ D1 ค่ะ';
+    }
+    await sendLineReply(replyToken, reply.trim(), env.LINE_CHANNEL_ACCESS_TOKEN);
+  } catch (err) {
+    console.error('handleStatusCommand error:', err);
   }
 }

@@ -29,6 +29,35 @@ export function parseLineMessage(text, refDateMs = Date.now()) {
   const cleaned = text.trim();
   if (!cleaned) return { isPumpReport: false };
 
+  // ตรวจจับคำสั่งบอท (Bot Commands)
+  const lower = cleaned.toLowerCase();
+  if (/^[/]?(?:status|สถานะ|สรุป|ปั๊ม)$/i.test(lower)) {
+    return {
+      isPumpReport: false,
+      isCommand: true,
+      command: 'status',
+      replyText: 'กำลังตรวจสอบสถานะปั๊ม PP-601 ล่าสุด...',
+    };
+  }
+  if (/^[/]?(?:help|วิธีใช้|คำสั่ง|เมนู)$/i.test(lower)) {
+    return {
+      isPumpReport: false,
+      isCommand: true,
+      command: 'help',
+      replyText: [
+        '📖 วิธีใช้งานบอท Monitor PP-601:',
+        '1. ส่งค่าอุณหภูมิ เช่น:',
+        '   22:00',
+        '   A 125/77',
+        '   C 128/94',
+        '2. คำสั่งพิเศษ:',
+        '   • พิมพ์ "status" หรือ "สรุป" เพื่อดูค่าล่าสุด',
+        '   • พิมพ์ "help" เพื่อดูวิธีใช้งาน',
+        '🌐 เว็บแอป: https://monitor-pp-601.supasiao.workers.dev',
+      ].join('\n'),
+    };
+  }
+
   // ตรวจสอบเบื้องต้น: ต้องมีรูปแบบตัวเลขคู่ เช่น 108/65 หรือคำว่า temp gauge
   const tempPairRegex = /\b(\d{2,3}(?:\.\d+)?)\s*[/]\s*(\d{2,3}(?:\.\d+)?)\b/;
   if (!tempPairRegex.test(cleaned)) {

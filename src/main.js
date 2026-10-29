@@ -2,7 +2,6 @@
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
-import { createFirebaseRepo } from './modules/cloud-sync-manager.js';
 import { createLocalRepo } from './modules/repo-local.js';
 import { createStore } from './modules/state-store.js';
 import { DEFAULT_LIMITS, DEFAULT_STATUS } from './modules/app-config.js';
@@ -158,12 +157,17 @@ function showFatal(message) {
 
 async function init() {
   applyTheme(store.get('theme'));
-  repo = isFirebaseConfigured ? createFirebaseRepo(firebaseConfig) : createLocalRepo();
+  if (isFirebaseConfigured) {
+    const { createFirebaseRepo } = await import('./modules/cloud-sync-manager.js');
+    repo = createFirebaseRepo(firebaseConfig);
+  } else {
+    repo = createLocalRepo();
+  }
   try {
     await repo.init();
   } catch (err) {
     console.error(err);
-    showFatal(`เชื่อมต่อ Firebase ไม่สำเร็จ (${err?.code ?? err?.message ?? 'unknown'}) — ตรวจว่าเปิด Anonymous sign-in แล้ว และมีสัญญาณอินเทอร์เน็ต`);
+    showFatal(`เชื่อมต่อฐานข้อมูลไม่สำเร็จ (${err?.code ?? err?.message ?? 'unknown'}) — ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต`);
     return;
   }
 
@@ -187,5 +191,11 @@ async function init() {
 window.addEventListener('error', (e) => console.error('uncaught', e.error ?? e.message));
 window.addEventListener('unhandledrejection', (e) => console.error('unhandled', e.reason));
 
-registerSW({ immediate: true });
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    toast('มีเว็บเวอร์ชันใหม่ — กำลังอัปเดต…', 'ok');
+    setTimeout(() => updateSW(true), 1500);
+  },
+});
 init();
