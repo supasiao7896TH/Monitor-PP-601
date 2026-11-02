@@ -107,10 +107,18 @@ try {
         $timeText = $ws.Cells.Item($r, 2).Text
 
         if ($c1Val -and $c1Text) {
-            if ($c1Text -match '(\d{1,2})/(\d{1,2})/(\d{4})') {
-                $currentDate = [DateTime]::new([int]$Matches[3], [int]$Matches[2], [int]$Matches[1])
-            } elseif ($c1Val -gt 40000) {
+            # Read the date from Excel's serial number (Value2) first: it does not depend on the
+            # Windows regional format. Parsing .Text broke on an en-US PC (M/d/yyyy: "8/21/2026"
+            # was read as month 21) and failed the whole run.
+            if ($c1Val -is [double] -and $c1Val -gt 40000) {
                 $currentDate = [DateTime]::new(1899, 12, 30).AddDays([int]$c1Val)
+            } elseif ($c1Text -match '^\s*(\d{1,2})/(\d{1,2})/(\d{4})\s*$') {
+                # Plain-text cell: only d/M/yyyy is understood; an impossible date skips the row
+                try {
+                    $currentDate = [DateTime]::new([int]$Matches[3], [int]$Matches[2], [int]$Matches[1])
+                } catch {
+                    Write-Warning "Row ${r}: unreadable date text '$c1Text' - skipped"
+                }
             }
         } elseif ($timeText -eq "01:00" -and $currentDate) {
             $currentDate = $currentDate.AddDays(1)
