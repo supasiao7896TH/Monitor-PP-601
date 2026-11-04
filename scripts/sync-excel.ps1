@@ -106,6 +106,12 @@ try {
         $c1Text = $ws.Cells.Item($r, 1).Text
         $timeText = $ws.Cells.Item($r, 2).Text
 
+        # Normalize time from "1:00", "01:00", etc. to standard "HH:mm"
+        $normalizedTime = $null
+        if ($timeText -match '^\s*(\d{1,2}):(\d{2})\s*$') {
+            $normalizedTime = "{0:D2}:{1:D2}" -f [int]$Matches[1], [int]$Matches[2]
+        }
+
         if ($c1Val -and $c1Text) {
             # Read the date from Excel's serial number (Value2) first: it does not depend on the
             # Windows regional format. Parsing .Text broke on an en-US PC (M/d/yyyy: "8/21/2026"
@@ -120,7 +126,7 @@ try {
                     Write-Warning "Row ${r}: unreadable date text '$c1Text' - skipped"
                 }
             }
-        } elseif ($timeText -eq "01:00" -and $currentDate) {
+        } elseif ($normalizedTime -eq "01:00" -and $currentDate) {
             $currentDate = $currentDate.AddDays(1)
             # เติมวันที่ลงช่องซ้ายสุด (Col 1) ที่รอบ 01:00 หากยังไม่ได้กรอก
             if (-not $c1Val -or $c1Text -eq "") {
@@ -131,11 +137,17 @@ try {
             }
         }
 
-        if (-not $currentDate -or -not $timeText -or $timeText -notmatch '^\d{2}:\d{2}$') {
+        if (-not $currentDate -or -not $normalizedTime) {
             continue
         }
 
-        $rowSlotKey = "$($currentDate.ToString('yyyy-MM-dd')) $timeText"
+        # Future Safety Guard: Never write readings into future slots
+        $slotDateTime = $currentDate.Date.AddHours([int]$normalizedTime.Substring(0,2)).AddMinutes([int]$normalizedTime.Substring(3,2))
+        if ($slotDateTime -gt (Get-Date).AddMinutes(30)) {
+            continue
+        }
+
+        $rowSlotKey = "$($currentDate.ToString('yyyy-MM-dd')) $normalizedTime"
 
         if ($readingsBySlot.ContainsKey($rowSlotKey)) {
             $pumpReadings = $readingsBySlot[$rowSlotKey]
