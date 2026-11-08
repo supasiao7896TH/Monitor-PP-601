@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 
 $username = $env:USERNAME
 $desktopPath = [Environment]::GetFolderPath("Desktop")
-$sharedDir = "C:\ProgramData\PP601-Monitor"
+$sharedDir = if (Test-Path "C:\PP601-Monitor\sync-excel.ps1") { "C:\PP601-Monitor" } else { "C:\ProgramData\PP601-Monitor" }
 $syncScript = Join-Path $sharedDir "sync-excel.ps1"
 $taskName = "PP601-Excel-Sync"
 
