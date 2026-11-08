@@ -107,10 +107,16 @@ export default {
       const limit = Math.min(parseInt(url.searchParams.get('limit') || '100', 10), 1000);
       const since = parseInt(url.searchParams.get('since') || '0', 10);
       const shiftId = url.searchParams.get('shiftId');
+      const includeFuture = url.searchParams.get('includeFuture') === 'true';
 
       let query = 'SELECT * FROM readings WHERE 1=1';
       const params = [];
 
+      if (!includeFuture) {
+        // Future Safety Guard: ป้องกัน Ghost Future Data ไม่ให้ส่งค่าในอนาคตไปยัง Web App
+        query += ' AND slotTime <= ?';
+        params.push(Date.now() + 3600000);
+      }
       if (since > 0) {
         query += ' AND slotTime >= ?';
         params.push(since);
@@ -395,7 +401,9 @@ async function sendLineReply(replyToken, text, token) {
  */
 async function handleStatusCommand(replyToken, env) {
   try {
-    const { results } = await env.DB.prepare('SELECT * FROM readings ORDER BY slotTime DESC LIMIT 6').all();
+    const now = Date.now();
+    // Future Safety Guard: ดึงเฉพาะข้อมูลที่ไม่เกินเวลาปัจจุบัน + 1 ชม.
+    const { results } = await env.DB.prepare('SELECT * FROM readings WHERE slotTime <= ? ORDER BY slotTime DESC LIMIT 6').bind(now + 3600000).all();
     let reply = '📊 สรุปสถานะ PP-601 ล่าสุด:\n';
     if (results && results.length > 0) {
       const latest = {};

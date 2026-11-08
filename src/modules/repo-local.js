@@ -46,7 +46,9 @@ export function createLocalRepo() {
         const data = await res.json();
         if (data.ok && Array.isArray(data.readings)) {
           hasD1 = true;
+          const now = Date.now();
           for (const r of data.readings) {
+            if (Number(r.slotTime) > now + 60 * 60 * 1000) continue;
             const prev = db.readings[r.id];
             if (!prev || (r.updatedAt && r.updatedAt > (prev.updatedAt || 0))) {
               db.readings[r.id] = {
@@ -58,6 +60,13 @@ export function createLocalRepo() {
                 diff: r.diff != null ? Number(r.diff) : null,
                 voided: !!r.voided,
               };
+              changed = true;
+            }
+          }
+          // ล้าง Ghost Future Data ที่อาจค้างใน LocalStorage ออก
+          for (const [id, r] of Object.entries(db.readings)) {
+            if (r.slotTime > now + 60 * 60 * 1000) {
+              delete db.readings[id];
               changed = true;
             }
           }

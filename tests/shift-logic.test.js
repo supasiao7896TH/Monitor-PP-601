@@ -407,6 +407,18 @@ describe('กราฟยาวตามรอบเดิน pump', () => {
       expect(latest.slotTime).toBe(bkk(2026, 10, 12, 10));
     });
 
+    it('ไม่นำรายการที่มี slotTime ในอนาคต (Ghost Future Data) มาเป็นค่าล่าสุด', () => {
+      const now = bkk(2026, 11, 8, 22, 0); // 22:00 น.
+      const readings = [
+        { pump: 'A', slotTime: bkk(2026, 11, 8, 19), tg3602: 138, tg3603: 83 },
+        { pump: 'A', slotTime: bkk(2026, 11, 9, 1), tg3602: 142, tg3603: 88 }, // 01:00 น. วันพรุ่งนี้ (อนาคต)
+      ];
+      const latest = latestReadingOf(readings, 'A', now);
+      expect(latest).toBeDefined();
+      expect(latest.slotTime).toBe(bkk(2026, 11, 8, 19));
+      expect(latest.tg3602).toBe(138);
+    });
+
     it('คืนค่า null ถ้าไม่มีข้อมูลของ pump นั้น', () => {
       expect(latestReadingOf([], 'C')).toBeNull();
     });

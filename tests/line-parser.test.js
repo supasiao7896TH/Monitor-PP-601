@@ -144,4 +144,47 @@ Temp gauge = 125/92`;
     expect(h.replyText).toBeDefined();
     expect(h.replyText).toContain('วิธีใช้งานบอท');
   });
+
+  it('แก้ปัญหา 12-hour ambiguity: พิมพ์ 1:00 หรือ 01:00 ช่วงบ่าย (13:01) ต้องได้รอบ 13:00 ไม่หลุดไป 01:00 วันรุ่งขึ้น', () => {
+    const text = `1:00
+A 142/88
+C 108/81`;
+    // ส่งตอน 13:01:48 ของวันที่ 8 พ.ย. 2569
+    const refDate = bkk(2026, 11, 8, 13, 1) + 48000;
+    const res = parseLineMessage(text, refDate);
+
+    expect(res.isPumpReport).toBe(true);
+    expect(res.ok).toBe(true);
+    expect(res.slotTime).toBe(bkk(2026, 11, 8, 13, 0));
+    expect(res.readings[0].id).toBe('A_202611081300');
+    expect(res.readings[0].shiftId).toBe('2026-11-08_D');
+    expect(res.replyText).toContain('รอบ 13:00');
+  });
+
+  it('แก้ปัญหา 12-hour ambiguity: พิมพ์ 01:00 ช่วงบ่าย (13:00) ต้องได้รอบ 13:00', () => {
+    const text = `01:00
+A 142/88
+C 108/81`;
+    const refDate = bkk(2026, 11, 8, 13, 0);
+    const res = parseLineMessage(text, refDate);
+    expect(res.slotTime).toBe(bkk(2026, 11, 8, 13, 0));
+    expect(res.readings[0].id).toBe('A_202611081300');
+  });
+
+  it('แก้ปัญหา 12-hour ambiguity: พิมพ์ 4:00 หรือ 7:00 ช่วงเย็น ต้องได้รอบ 16:00 และ 19:00', () => {
+    const text4 = `4:00\nA 142/88\nC 108/81`;
+    const res4 = parseLineMessage(text4, bkk(2026, 11, 8, 16, 15));
+    expect(res4.slotTime).toBe(bkk(2026, 11, 8, 16, 0));
+
+    const text7 = `7:00\nA 138/83\nC 106/80`;
+    const res7 = parseLineMessage(text7, bkk(2026, 11, 8, 18, 50));
+    expect(res7.slotTime).toBe(bkk(2026, 11, 8, 19, 0));
+  });
+
+  it('Future Safety Guard: slotTime ต้องไม่ลอยไปในอนาคตเกิน 1.5 ชม.', () => {
+    const text = `01:00\nA 142/88\nC 108/81`;
+    // ส่งตอน 13:00 ไม่ควรได้ 01:00 วันพรุ่งนี้ (ซึ่งห่างไป 12 ชม.)
+    const res = parseLineMessage(text, bkk(2026, 11, 8, 13, 0));
+    expect(res.slotTime).toBeLessThanOrEqual(bkk(2026, 11, 8, 13, 0) + 1.5 * 3600 * 1000);
+  });
 });

@@ -362,9 +362,14 @@ export function summarize(values) {
  * ดึงค่า reading ล่าสุดของ pump ที่กำหนด (ไม่รวมรายการที่ยกเลิก)
  * คืนค่า { slotTime, tg3602, tg3603, diff, note, recordedBy } หรือ null ถ้าไม่มีข้อมูล
  */
-export function latestReadingOf(readings, pump) {
+export function latestReadingOf(readings, pump, nowMs = Date.now()) {
   const mine = readings.filter(
-    (r) => r.pump === pump && !r.voided && isNum(r.tg3602) && isNum(r.tg3603),
+    (r) =>
+      r.pump === pump &&
+      !r.voided &&
+      isNum(r.tg3602) &&
+      isNum(r.tg3603) &&
+      r.slotTime <= nowMs + 30 * 60 * 1000,
   );
   if (mine.length === 0) return null;
   mine.sort((a, b) => b.slotTime - a.slotTime);

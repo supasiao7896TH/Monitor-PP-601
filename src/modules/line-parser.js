@@ -73,13 +73,29 @@ export function parseLineMessage(text, refDateMs = Date.now()) {
     const mi = parseInt(timeMatch[2], 10);
     const bp = bkkParts(refDateMs);
 
-    // สร้างเวลาไทย แล้วแปลงเป็น UTC
-    let targetMs = Date.UTC(bp.y, bp.mo - 1, bp.d, h - 7, mi);
-    // หากเวลาที่ระบุต่างจากเวลาปัจจุบันเกิน 12 ชม. (เช่น ส่งตอน 00:30 แต่ระบุ 22:00)
-    if (targetMs - refDateMs > 12 * HOUR) targetMs -= 24 * HOUR;
-    else if (refDateMs - targetMs > 12 * HOUR) targetMs += 24 * HOUR;
+    // Candidates: รองรับ 12-hour format ambiguity
+    // เช่น พิมพ์ 1:00 ช่วงบ่าย (รอบ 13:00), 4:00 ช่วงเย็น (รอบ 16:00), 7:00 ช่วงค่ำ (รอบ 19:00), 10:00 ช่วงดึก (รอบ 22:00)
+    const candidateHours = (h <= 12 && h > 0) ? [h, (h + 12) % 24] : [h];
 
-    slotTime = nearestSlot(targetMs);
+    let bestMs = null;
+    let minDiff = Infinity;
+
+    // ลอง candidate hours ทั้งวันนี้ วันวาน (-24h สำหรับส่งข้ามเที่ยงคืน) และวันพรุ่งนี้ (+24h)
+    for (const ch of candidateHours) {
+      const baseMs = Date.UTC(bp.y, bp.mo - 1, bp.d, ch - 7, mi);
+      for (const offset of [-24 * HOUR, 0, 24 * HOUR]) {
+        const t = baseMs + offset;
+        // Future Safety Guard: ห้ามลอยไปในอนาคตเกิน 1.5 ชม. (ไม่มีใครจดอุณหภูมิล่วงหน้า)
+        if (t > refDateMs + 1.5 * HOUR) continue;
+        const diff = Math.abs(refDateMs - t);
+        if (diff < minDiff) {
+          minDiff = diff;
+          bestMs = t;
+        }
+      }
+    }
+
+    slotTime = nearestSlot(bestMs ?? refDateMs);
   } else {
     slotTime = nearestSlot(refDateMs);
   }
