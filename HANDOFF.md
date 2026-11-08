@@ -36,7 +36,7 @@
    * คลิกขวาที่ไฟล์ [`scripts/setup-new-pc.ps1`](file:///C:/Users/26007294/A(i)CODER2025TH/Monitior%20PP-601/scripts/setup-new-pc.ps1) แล้วเลือก **"Run with PowerShell"**
    * สคริปต์จะ:
      * ตรวจสอบการเชื่อมต่อไดรฟ์ `K:` และ Cloudflare API
-     * ลงทะเบียน Windows Task Scheduler (`PP601-Excel-Sync`) ให้รันอัตโนมัติทุก 30 นาที
+     * ลงทะเบียน Windows Task Scheduler (`PP601-Excel-Sync`) ให้รันอัตโนมัติทุก 5 นาที (ทันใจก่อนออกกะ 07:30 / 19:30)
      * สร้าง Shortcut `Sync PP-601 Excel.bat` บนหน้าจอ Desktop ของเครื่องใหม่ให้ทันที!
 3. **เสร็จสิ้น 100%!** ระบบจะกลับมาทำงานอัตโนมัติเหมือนเครื่องเดิมทุกประการค่ะ
 

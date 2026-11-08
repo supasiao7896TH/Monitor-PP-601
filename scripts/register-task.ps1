@@ -1,20 +1,24 @@
-# scripts/register-task.ps1
-# Register Windows Task Scheduler job for PP-601 Excel Sync
+﻿# scripts/register-task.ps1
+# Register Windows Task Scheduler job for PP-601 Excel Sync (Every 5 minutes)
 $ErrorActionPreference = "Stop"
 
-$scriptPath = "C:\Users\26007294\A(i)CODER2025TH\Monitior PP-601\scripts\sync-excel.ps1"
+$sharedDir = "C:\ProgramData\PP601-Monitor"
+$scriptPath = Join-Path $sharedDir "sync-excel.ps1"
+if (-not (Test-Path $scriptPath)) {
+    $scriptPath = Join-Path $PSScriptRoot "sync-excel.ps1"
+}
 $taskName = "PP601-Excel-Sync"
 
 # 1. Action: run powershell hidden
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
 
-# 2. Trigger: Run every 30 minutes
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 30)
+# 2. Trigger: Run every 5 minutes (รันทุก 5 นาที เพื่อให้ทันเวลาก่อนออกกะ 07:30 และ 19:30)
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
 
 # 3. Settings: wake machine not needed, allow start on demand
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
 # 4. Register
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report" -Force
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report (Every 5 minutes)" -Force
 
-Write-Host "Successfully registered scheduled task: $taskName (Every 30 minutes)"
+Write-Host "Successfully registered scheduled task: $taskName (Every 5 minutes)"

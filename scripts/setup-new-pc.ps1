@@ -44,14 +44,14 @@ try {
     Write-Host " WARNING: Could not connect to API ($($_.Exception.Message))" -ForegroundColor Yellow
 }
 
-# 4. Register Scheduled Task (every 30 minutes)
+# 4. Register Scheduled Task (every 5 minutes)
 Write-Host "[4/5] Registering Windows Scheduled Task 'PP601-Excel-Sync'..." -NoNewline
 try {
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$syncScript`""
-    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 30)
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName "PP601-Excel-Sync" -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report (Multi-User Shared)" -Force | Out-Null
-    Write-Host " OK! (Runs every 30 minutes in background)" -ForegroundColor Green
+    Register-ScheduledTask -TaskName "PP601-Excel-Sync" -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report (Multi-User Shared, Every 5 minutes)" -Force | Out-Null
+    Write-Host " OK! (Runs every 5 minutes in background)" -ForegroundColor Green
 } catch {
     Write-Host " FAILED ($($_.Exception.Message))" -ForegroundColor Red
 }
