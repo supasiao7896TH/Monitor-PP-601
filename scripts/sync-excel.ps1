@@ -1,4 +1,4 @@
-# scripts/sync-excel.ps1
+﻿# scripts/sync-excel.ps1
 # Automated Sync: Cloudflare D1 API -> K:\PE1\Daily report PTA1\Monitor temp pump PP-601.xlsx
 param(
     [string]$ExcelPath = "K:\PE1\Daily report PTA1\Monitor temp pump PP-601.xlsx",
@@ -81,22 +81,109 @@ try {
     $ws = $wb.Sheets.Item(1)
     $lastRow = $ws.UsedRange.Rows.Count
 
-    # Check template remaining headroom
-    $unfilledRows = 0
-    for ($checkRow = $lastRow; $checkRow -ge 6; $checkRow--) {
-        $hasValA = $ws.Cells.Item($checkRow, 3).Value2
-        $hasValC = $ws.Cells.Item($checkRow, 7).Value2
-        if (-not $hasValA -and -not $hasValC) {
-            $unfilledRows++
-        } else {
-            break
+    # -------------------------------------------------------------
+    # Template Headroom & Smart Auto-Extend Engine
+    # -------------------------------------------------------------
+    $lastTemplateRow = 6
+    $lastTemplateDate = $null
+    $scanDate = $null
+
+    # Accurately scan sheet to identify last configured template row and date
+    for ($checkR = 6; $checkR -le $lastRow; $checkR++) {
+        $chkVal = $ws.Cells.Item($checkR, 1).Value2
+        $chkText = $ws.Cells.Item($checkR, 1).Text
+        $tText = $ws.Cells.Item($checkR, 2).Text
+
+        $normT = $null
+        if ($tText -match '^\s*(\d{1,2}):(\d{2})\s*$') {
+            $normT = "{0:D2}:{1:D2}" -f [int]$Matches[1], [int]$Matches[2]
+        }
+
+        if ($chkVal -and $chkText) {
+            if ($chkVal -is [double] -and $chkVal -gt 40000) {
+                $scanDate = [DateTime]::new(1899, 12, 30).AddDays([int]$chkVal)
+            } elseif ($chkText -match '^\s*(\d{1,2})/(\d{1,2})/(\d{4})\s*$') {
+                try {
+                    $scanDate = [DateTime]::new([int]$Matches[3], [int]$Matches[2], [int]$Matches[1])
+                } catch {}
+            }
+        } elseif ($normT -eq "01:00" -and $scanDate) {
+            $scanDate = $scanDate.AddDays(1)
+        }
+
+        if ($normT -and $scanDate) {
+            $lastTemplateRow = $checkR
+            $lastTemplateDate = $scanDate
         }
     }
-    if ($unfilledRows -lt 24) {
-        $daysLeft = [Math]::Round($unfilledRows / 8, 1)
-        Write-Warning "[TEMPLATE ALERT] Only $unfilledRows empty slot(s) (~$daysLeft days) remaining in Excel! Please prepare next month's template rows soon."
-    } else {
-        Write-Host "Template headroom: $unfilledRows empty slot(s) remaining."
+
+    $daysAhead = if ($lastTemplateDate) { ($lastTemplateDate.Date - (Get-Date).Date).Days } else { 0 }
+    if ($lastTemplateDate) {
+        Write-Host "Template valid through: $($lastTemplateDate.ToString('yyyy-MM-dd')) ($daysAhead day(s) ahead, Row $lastTemplateRow)"
+    }
+
+    # Auto-Extend Trigger: If template headroom is less than 7 days, automatically extend through the end of next month
+    if ($daysAhead -lt 7 -and $lastTemplateDate) {
+        $targetMonth = $lastTemplateDate.AddMonths(1)
+        $daysInTargetMonth = [DateTime]::DaysInMonth($targetMonth.Year, $targetMonth.Month)
+        $targetEndDate = [DateTime]::new($targetMonth.Year, $targetMonth.Month, $daysInTargetMonth)
+
+        Write-Host "[AUTO-EXTEND] Template headroom is low ($daysAhead day(s) < 7 days)."
+        Write-Host "[AUTO-EXTEND] Automatically extending template through $($targetEndDate.ToString('yyyy-MM-dd'))..."
+
+        $hours = @(1, 4, 7, 10, 13, 16, 19, 22)
+        $currDate = $lastTemplateDate.AddDays(1)
+        $newRow = $lastTemplateRow + 1
+
+        while ($currDate -le $targetEndDate) {
+            for ($hIdx = 0; $hIdx -lt 8; $hIdx++) {
+                $hour = $hours[$hIdx]
+
+                # Copy format from previous row to retain border/font/alignment
+                try {
+                    $ws.Range("A$($newRow-1):M$($newRow-1)").Copy() | Out-Null
+                    $ws.Range("A$newRow:M$newRow").PasteSpecial(-4122) | Out-Null # -4122 = xlPasteFormats
+                } catch {}
+
+                # Col 1: Date on 01:00 slot
+                if ($hour -eq 1) {
+                    $ws.Cells.Item($newRow, 1).NumberFormat = "dd/mm/yyyy"
+                    $ws.Cells.Item($newRow, 1).Value2 = $currDate.ToOADate()
+                } else {
+                    $ws.Cells.Item($newRow, 1).Value2 = $null
+                }
+
+                # Col 2: Time
+                $ws.Cells.Item($newRow, 2).NumberFormat = "h:mm"
+                $ws.Cells.Item($newRow, 2).Value2 = [double]$hour / 24.0
+
+                # Clear temperature cells for safety
+                $ws.Cells.Item($newRow, 3).Value2 = $null
+                $ws.Cells.Item($newRow, 4).Value2 = $null
+                $ws.Cells.Item($newRow, 5).Value2 = $null
+                $ws.Cells.Item($newRow, 6).Value2 = $null
+                $ws.Cells.Item($newRow, 7).Value2 = $null
+                $ws.Cells.Item($newRow, 8).Value2 = $null
+
+                # Col 9 & 13: Limits
+                $ws.Cells.Item($newRow, 9).Value2 = 70
+                $ws.Cells.Item($newRow, 13).Value2 = 20
+
+                # Col 10, 11, 12: Diff Formulas
+                $ws.Cells.Item($newRow, 10).Formula = "=C$newRow-D$newRow"
+                $ws.Cells.Item($newRow, 11).Formula = "=E$newRow-F$newRow"
+                $ws.Cells.Item($newRow, 12).Formula = "=G$newRow-H$newRow"
+
+                $newRow++
+            }
+            $currDate = $currDate.AddDays(1)
+        }
+
+        try { $excel.CutCopyMode = $false } catch {}
+
+        $lastRow = $newRow - 1
+        $wb.Save()
+        Write-Host "[AUTO-EXTEND] Extended successfully up to Row $lastRow ($($targetEndDate.ToString('yyyy-MM-dd')))."
     }
 
     $currentDate = $null

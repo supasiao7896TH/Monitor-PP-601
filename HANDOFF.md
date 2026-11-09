@@ -1,6 +1,6 @@
 # HANDOFF.md — PP-601 Monitor (ส่งต่องาน มือถือ → PC บ้าน / PC เครื่องใหม่)
 
-อัปเดต: 2026-11-04 (แก้ Bug เวลา Excel h:mm Roll-over + ขยายเทมเพลตถึงสิ้นเดือน พ.ย.) · Branch: `main` · Unit Tests 84 ข้อผ่าน 100%
+อัปเดต: 2026-11-10 (Auto-Extend Template Engine + Auto-Date Continuity) · Branch: `main` · Unit Tests 89 ข้อผ่าน 100%
 
 ## สถานะ
 | ส่วน | สถานะ |
@@ -8,11 +8,11 @@
 | หน้าจอ Dashboard สำหรับ PC (Control Room Widescreen) | ✅ เสร็จ 3-Column Header Grid + ตาราง Full-Width + กราฟแนวโน้มเต็มจอ + **Auto-Polling ทุก 60 วินาที** (อัปเดตเองไม่ง้อเมาส์) |
 | Web Bundle Optimization | ✅ **ลดขนาด Bundle จาก 838 kB เหลือ 214 kB (-74%)** ด้วย Dynamic Import Firebase |
 | กราฟความละเอียดสูง (Dual Y-Axis, Dynamic Zoom, 320px) | ✅ เสร็จ กราฟ Widescreen บน PC พร้อมปุ่มเลือก 24 ชม. (8 รอบ) / 48 ชม. / 7 วัน + แสดงค่าล่าสุด |
-| Unit Tests (Vitest) | ✅ **84 ข้อผ่าน 100%** (เพิ่มเทสต์ API D1 state/events และ LINE Bot commands) |
+| Unit Tests (Vitest) | ✅ **89 ข้อผ่าน 100%** (เทสต์คลุม shift-logic, line-parser, import-excel, worker-d1) |
 | Cloudflare D1 Database (`pp601-db`) | ✅ ครบ 3 ตาราง: `readings`, `app_state` (status/limits), และ `events` (ไทม์ไลน์สลับปั๊ม/งานล้าง) ซิงก์ข้ามเครื่อง 100% |
 | LINE Bot Webhook & Interactive Commands | ✅ รองรับบันทึกอุณหภูมิ + **คำสั่งพิเศษ `status`, `สรุป`, `help`** ตอบสถานะปั๊ม 3 ตัวทันทีใน LINE |
 | ซิงก์อัตโนมัติ LINE ➔ D1 ➔ หน้าเว็บ | ✅ เสร็จสมบูรณ์ เมื่อ F/O ส่งใน LINE บอทเซฟลง D1 และหน้าเว็บดึงมาวาดกราฟอัตโนมัติ |
-| กรอกค่าลง Excel ไดรฟ์ K: อัตโนมัติ | ✅ ทำงานผ่าน Task Scheduler + Time Normalization (HH:mm) + Date Roll-over อัตโนมัติ + ป้องกัน Future Ghost Data + เทมเพลตรองรับถึงสิ้นเดือน พ.ย. |
+| กรอกค่าลง Excel ไดรฟ์ K: อัตโนมัติ | ✅ ทำงานผ่าน Task Scheduler + **Auto-Extend Template Engine (งอกเดือนถัดไปอัตโนมัติเมื่อเหลือ <7 วัน)** + Zero-Maintenance ไม่ต้องลากแถวมืออีกต่อไป |
 | Deploy Cloudflare Workers | ✅ Deploy เวอร์ชันใหม่สำเร็จแล้วที่ `https://monitor-pp-601.supasiao.workers.dev` (Version ID: `a45b202a...`) |
 | Excel Hyperlink Shortcut | ✅ สูตร `=HYPERLINK("https://monitor-pp-601.supasiao.workers.dev", "🌐 เปิดระบบ Monitor PP-601")` สำหรับเปิด Web App จากในชีต |
 | Industrial Skill Documentation | ✅ สรุปและถอดองค์ความรู้เป็น Skill `line-bot-edge-sync` พร้อมสำเนาไว้ที่ `docs/skills/line-bot-edge-sync.md` |
