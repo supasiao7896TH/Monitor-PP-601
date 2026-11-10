@@ -2,6 +2,7 @@
  * CLOUDFLARE WORKER ENTRYPOINT — ให้บริการ Static Assets (Frontend) + LINE Webhook API
  */
 import { parseLineMessage, verifyLineSignature } from './modules/line-parser.js';
+import { shiftOf } from './modules/shift-logic.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -400,7 +401,7 @@ export async function saveToD1(readings, db) {
       r.id,
       r.pump,
       Number(r.slotTime),
-      r.shiftId,
+      r.shiftId || (r.slotTime ? shiftOf(Number(r.slotTime)) : ''),
       r.tg3602 != null ? Number(r.tg3602) : null,
       r.tg3603 != null ? Number(r.tg3603) : null,
       r.diff != null ? Number(r.diff) : null,

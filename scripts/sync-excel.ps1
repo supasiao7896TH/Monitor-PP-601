@@ -310,10 +310,18 @@ try {
                     try {
                         $utcMs = [long]([DateTimeOffset]::new($slotDateTime, [TimeSpan]::FromHours(7)).ToUnixTimeMilliseconds())
                         $bId = "B_$($slotDateTime.ToString('yyyyMMddHHmm'))"
+                        $h = $slotDateTime.Hour
+                        $mi = $slotDateTime.Minute
+                        $isNight = ($h -lt 7) -or ($h -eq 7 -and $mi -lt 30) -or ($h -gt 19) -or ($h -eq 19 -and $mi -ge 30)
+                        $sDate = if ($h -lt 7 -or ($h -eq 7 -and $mi -lt 30)) { $slotDateTime.AddDays(-1) } else { $slotDateTime }
+                        $sKind = if ($isNight) { "N" } else { "D" }
+                        $shiftId = "$($sDate.ToString('yyyy-MM-dd'))_$sKind"
+
                         $postBody = @{
                             id = $bId
                             pump = "B"
                             slotTime = $utcMs
+                            shiftId = $shiftId
                             tg3603 = $bOutVal
                             recordedBy = "PI DataLink"
                         } | ConvertTo-Json
