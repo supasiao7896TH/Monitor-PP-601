@@ -63,6 +63,24 @@ export default {
       return new Response('OK', { status: 200 });
     }
 
+    // 1.5 /api/db-diag — ตรวจสอบและซ่อมแซม Schema ของ D1 Database
+    if (url.pathname === '/api/db-diag') {
+      try {
+        if (!env.DB) return new Response(JSON.stringify({ ok: false, error: 'No DB' }), { status: 503 });
+        await ensureSchema(env.DB);
+        const schema = await env.DB.prepare("SELECT sql FROM sqlite_master WHERE name='readings'").first();
+        const info = await env.DB.prepare("PRAGMA table_info(readings)").all();
+        return new Response(JSON.stringify({ ok: true, schema, info }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ ok: false, error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+    }
+
     // 2. /api/readings — ซิงก์ข้อมูลอุณหภูมิระหว่างหน้าเว็บกับ D1 Database
     if (url.pathname === '/api/readings') {
       if (!env.DB) {
@@ -316,8 +334,8 @@ export async function ensureSchema(db) {
     const { results } = await stmt.all();
     const tg3603Col = results?.find((c) => c.name === 'tg3603');
     if (tg3603Col && tg3603Col.notnull === 1) {
-      await db.batch([
-        db.prepare(`
+      if (typeof db.exec === 'function') {
+        await db.exec(`
           CREATE TABLE IF NOT EXISTS readings_v2 (
             id TEXT PRIMARY KEY,
             pump TEXT NOT NULL,
@@ -329,14 +347,14 @@ export async function ensureSchema(db) {
             note TEXT DEFAULT '',
             recordedBy TEXT DEFAULT 'LINE Bot',
             updatedAt INTEGER NOT NULL
-          )
-        `),
-        db.prepare(`INSERT OR IGNORE INTO readings_v2 SELECT id, pump, slotTime, shiftId, tg3602, tg3603, diff, note, recordedBy, updatedAt FROM readings`),
-        db.prepare(`DROP TABLE readings`),
-        db.prepare(`ALTER TABLE readings_v2 RENAME TO readings`),
-        db.prepare(`CREATE INDEX IF NOT EXISTS idx_readings_slotTime ON readings(slotTime DESC)`),
-        db.prepare(`CREATE INDEX IF NOT EXISTS idx_readings_shiftId ON readings(shiftId)`),
-      ]);
+          );
+          INSERT OR IGNORE INTO readings_v2 SELECT id, pump, slotTime, shiftId, tg3602, tg3603, diff, note, recordedBy, updatedAt FROM readings;
+          DROP TABLE readings;
+          ALTER TABLE readings_v2 RENAME TO readings;
+          CREATE INDEX IF NOT EXISTS idx_readings_slotTime ON readings(slotTime DESC);
+          CREATE INDEX IF NOT EXISTS idx_readings_shiftId ON readings(shiftId);
+        `);
+      }
     }
     schemaEnsured = true;
   } catch (err) {
