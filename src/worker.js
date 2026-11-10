@@ -67,6 +67,17 @@ export default {
     if (url.pathname === '/api/db-diag') {
       try {
         if (!env.DB) return new Response(JSON.stringify({ ok: false, error: 'No DB' }), { status: 503 });
+        if (request.method === 'POST') {
+          const body = await request.json();
+          if (body.action === 'cleanup') {
+            await env.DB.exec(`
+              DELETE FROM readings WHERE id IN ('B_202611102200', 'B_202611110100');
+            `);
+            return new Response(JSON.stringify({ ok: true, cleaned: true }), {
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+          }
+        }
         await ensureSchema(env.DB);
         const schema = await env.DB.prepare("SELECT sql FROM sqlite_master WHERE name='readings'").first();
         const info = await env.DB.prepare("PRAGMA table_info(readings)").all();
