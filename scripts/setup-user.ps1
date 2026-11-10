@@ -22,14 +22,18 @@ if (-not (Test-Path $syncScript)) {
         exit 1
     }
 }
+$vbsPath = Join-Path $sharedDir "run-silent.vbs"
+if (Test-Path (Join-Path $PSScriptRoot "run-silent.vbs")) {
+    Copy-Item (Join-Path $PSScriptRoot "run-silent.vbs") $vbsPath -Force
+}
 
-# 2. Register Scheduled Task (Every 5 minutes for current user)
-Write-Host "`n[1/3] Registering Task Scheduler '$taskName' (Every 5 mins)..." -NoNewline
+# 2. Register Scheduled Task (Every 5 minutes, Zero-Flash Silent)
+Write-Host "`n[1/3] Registering Task Scheduler '$taskName' (Every 5 mins, Zero-Flash)..." -NoNewline
 try {
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$syncScript`""
+    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbsPath`"" -WorkingDirectory $sharedDir
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report ($username)" -Force | Out-Null
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report ($username, Zero-Flash)" -Force | Out-Null
     Write-Host " OK!" -ForegroundColor Green
 } catch {
     Write-Host " FAILED ($($_.Exception.Message))" -ForegroundColor Red

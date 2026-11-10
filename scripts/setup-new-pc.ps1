@@ -23,6 +23,7 @@ if (-not (Test-Path $sharedDir)) {
     New-Item -ItemType Directory -Path $sharedDir -Force | Out-Null
 }
 Copy-Item (Join-Path $PSScriptRoot "sync-excel.ps1") $syncScript -Force
+Copy-Item (Join-Path $PSScriptRoot "run-silent.vbs") (Join-Path $sharedDir "run-silent.vbs") -Force
 Write-Host " OK! (Accessible by all 4 B/M users)" -ForegroundColor Green
 
 # 2. Check Network Drive K:
@@ -44,14 +45,15 @@ try {
     Write-Host " WARNING: Could not connect to API ($($_.Exception.Message))" -ForegroundColor Yellow
 }
 
-# 4. Register Scheduled Task (every 5 minutes)
+# 4. Register Scheduled Task (every 5 minutes, Zero-Flash Silent)
 Write-Host "[4/5] Registering Windows Scheduled Task 'PP601-Excel-Sync'..." -NoNewline
 try {
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$syncScript`""
+    $vbsPath = Join-Path $sharedDir "run-silent.vbs"
+    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbsPath`"" -WorkingDirectory $sharedDir
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName "PP601-Excel-Sync" -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report (Multi-User Shared, Every 5 minutes)" -Force | Out-Null
-    Write-Host " OK! (Runs every 5 minutes in background)" -ForegroundColor Green
+    Register-ScheduledTask -TaskName "PP601-Excel-Sync" -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report (Multi-User Shared, Every 5 minutes, Zero-Flash)" -Force | Out-Null
+    Write-Host " OK! (Runs silently every 5 minutes in background)" -ForegroundColor Green
 } catch {
     Write-Host " FAILED ($($_.Exception.Message))" -ForegroundColor Red
 }
