@@ -162,8 +162,30 @@ export function mount(root, { repo, store }) {
 
     for (const p of pumps) {
       const ex = existing(p);
-      const a = h('input', { id: `a-${p}`, class: 'input num', type: 'text', inputMode: 'decimal', autocomplete: 'off', placeholder: '°C', 'aria-label': `PP-601${p} ${POINT_LABEL.tg3602}`, value: ex?.tg3602 ?? '' });
-      const b = h('input', { id: `b-${p}`, class: 'input num', type: 'text', inputMode: 'decimal', autocomplete: 'off', placeholder: '°C', 'aria-label': `PP-601${p} ${POINT_LABEL.tg3603}`, value: ex?.tg3603 ?? '' });
+      const labelIn = p === 'B' ? 'TG-2602B (หน้างาน)' : POINT_LABEL.tg3602;
+      const labelOut = p === 'B' ? 'TG-2603B (DCS: TI-2610B)' : POINT_LABEL.tg3603;
+      const isPiAuto = p === 'B' && ex?.tg3603 != null && (ex?.recordedBy || '').includes('PI');
+
+      const a = h('input', {
+        id: `a-${p}`,
+        class: 'input num',
+        type: 'text',
+        inputMode: 'decimal',
+        autocomplete: 'off',
+        placeholder: '°C',
+        'aria-label': `PP-601${p} ${labelIn}`,
+        value: ex?.tg3602 != null ? ex.tg3602 : '',
+      });
+      const b = h('input', {
+        id: `b-${p}`,
+        class: 'input num',
+        type: 'text',
+        inputMode: 'decimal',
+        autocomplete: 'off',
+        placeholder: '°C',
+        'aria-label': `PP-601${p} ${labelOut}`,
+        value: ex?.tg3603 != null ? ex.tg3603 : '',
+      });
       const note = h('input', { id: `n-${p}`, class: 'input', maxLength: 200, placeholder: 'หมายเหตุ (เช่น gauge error วัดด้วย temp gun)', 'aria-label': `หมายเหตุ PP-601${p}`, value: ex?.note ?? '' });
       const diffOut = h('span', { class: 'diff-out' });
       const flags = h('span', { class: 'flags' });
@@ -176,9 +198,10 @@ export function mount(root, { repo, store }) {
           diffOut.textContent = 'Diff –';
           return;
         }
-        diffOut.textContent = `Diff ${calcDiff(va.tg3602, va.tg3603)}`;
+        diffOut.textContent = va.tg3602 != null && va.tg3603 != null ? `Diff ${calcDiff(va.tg3602, va.tg3603)}` : 'Diff –';
         const ev = evaluate(va, limits);
-        flags.append(flagChip(ev.tg3603, `TG-3603`), flagChip(ev.diff, 'Diff'));
+        if (va.tg3603 != null) flags.append(flagChip(ev.tg3603, p === 'B' ? 'TG-2603B' : 'TG-3603'));
+        if (va.tg3602 != null && va.tg3603 != null) flags.append(flagChip(ev.diff, 'Diff'));
       };
       for (const el of [a, b, note]) el.addEventListener('input', () => (touched.add(p), refresh()));
       refresh();
@@ -188,7 +211,12 @@ export function mount(root, { repo, store }) {
           'fieldset',
           { class: 'pump-fieldset' },
           h('legend', {}, `PP-601${p}`, status[p] !== 'RUN' ? h('span', { class: 'caption' }, ` (${STATE_LABEL[status[p]]})`) : null),
-          h('div', { class: 'two-col' }, h('div', {}, h('label', { for: `a-${p}` }, POINT_LABEL.tg3602), a), h('div', {}, h('label', { for: `b-${p}` }, POINT_LABEL.tg3603), b)),
+          h(
+            'div',
+            { class: 'two-col' },
+            h('div', {}, h('label', { for: `a-${p}` }, labelIn), a),
+            h('div', {}, h('label', { for: `b-${p}` }, labelOut, isPiAuto ? h('span', { class: 'caption', style: 'color: var(--accent); margin-left: 4px;' }, '🤖 PI Auto') : null), b),
+          ),
           h('div', { class: 'row-between' }, diffOut, flags),
           note,
           ex
@@ -225,8 +253,8 @@ export function mount(root, { repo, store }) {
       if (!f.a.isConnected) continue;
       const ex = existing(p);
       if (ex && !touched.has(p)) {
-        f.a.value = ex.tg3602;
-        f.b.value = ex.tg3603;
+        f.a.value = ex.tg3602 != null ? ex.tg3602 : '';
+        f.b.value = ex.tg3603 != null ? ex.tg3603 : '';
         f.note.value = ex.note ?? '';
         f.a.dispatchEvent(new Event('input'));
         touched.delete(p);

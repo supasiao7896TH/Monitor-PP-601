@@ -309,9 +309,20 @@ export default {
 export async function saveToD1(readings, db) {
   if (!db || !readings || readings.length === 0) return;
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO readings (
+    INSERT INTO readings (
       id, pump, slotTime, shiftId, tg3602, tg3603, diff, note, recordedBy, updatedAt
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      tg3602 = COALESCE(excluded.tg3602, readings.tg3602),
+      tg3603 = COALESCE(excluded.tg3603, readings.tg3603),
+      diff = CASE
+        WHEN COALESCE(excluded.tg3602, readings.tg3602) IS NOT NULL AND COALESCE(excluded.tg3603, readings.tg3603) IS NOT NULL
+        THEN ROUND(COALESCE(excluded.tg3602, readings.tg3602) - COALESCE(excluded.tg3603, readings.tg3603), 1)
+        ELSE NULL
+      END,
+      note = CASE WHEN excluded.note != '' THEN excluded.note ELSE readings.note END,
+      recordedBy = CASE WHEN excluded.recordedBy != '' THEN excluded.recordedBy ELSE readings.recordedBy END,
+      updatedAt = excluded.updatedAt
   `);
 
   const batch = readings.map((r) =>
@@ -320,8 +331,8 @@ export async function saveToD1(readings, db) {
       r.pump,
       Number(r.slotTime),
       r.shiftId,
-      Number(r.tg3602),
-      Number(r.tg3603),
+      r.tg3602 != null ? Number(r.tg3602) : null,
+      r.tg3603 != null ? Number(r.tg3603) : null,
       r.diff != null ? Number(r.diff) : null,
       r.note || '',
       r.recordedBy || 'LINE Bot',
@@ -413,8 +424,11 @@ async function handleStatusCommand(replyToken, env) {
       ['A', 'B', 'C'].forEach((p) => {
         const r = latest[p];
         if (r) {
-          const isWarn = r.tg3603 < 70 || (r.diff != null && r.diff < 20);
-          reply += `• PP-601${p}: In ${r.tg3602}° / Out ${r.tg3603}° (Diff ${r.diff}°) ${isWarn ? '⚠️' : '🟢'}\n`;
+          const inStr = r.tg3602 != null ? `${r.tg3602}°` : '-';
+          const outStr = r.tg3603 != null ? `${r.tg3603}°` : '(รอ DCS)';
+          const diffStr = r.diff != null ? ` (Diff ${r.diff}°)` : '';
+          const isWarn = (r.tg3603 != null && r.tg3603 < 70) || (r.diff != null && r.diff < 20);
+          reply += `• PP-601${p}: In ${inStr} / Out ${outStr}${diffStr} ${isWarn ? '⚠️' : '🟢'}\n`;
         } else {
           reply += `• PP-601${p}: สแตนด์บาย (ยังไม่มีค่าเดินเครื่อง)\n`;
         }

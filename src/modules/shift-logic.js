@@ -179,13 +179,18 @@ function parseTemp(raw) {
 export function validateReading({ tg3602, tg3603 }) {
   const a = parseTemp(tg3602);
   const b = parseTemp(tg3603);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) {
-    return { ok: false, error: 'กรอกค่า TG-3602 และ TG-3603 เป็นตัวเลข' };
+  const hasA = Number.isFinite(a);
+  const hasB = Number.isFinite(b);
+  if (!hasA && !hasB) {
+    return { ok: false, error: 'กรอกค่าอุณหภูมิอย่างน้อย 1 จุด' };
   }
-  if (a < TEMP_MIN || a > TEMP_MAX || b < TEMP_MIN || b > TEMP_MAX) {
+  if (hasA && (a < TEMP_MIN || a > TEMP_MAX)) {
     return { ok: false, error: `ค่าต้องอยู่ระหว่าง ${TEMP_MIN}–${TEMP_MAX} °C` };
   }
-  return { ok: true, tg3602: a, tg3603: b };
+  if (hasB && (b < TEMP_MIN || b > TEMP_MAX)) {
+    return { ok: false, error: `ค่าต้องอยู่ระหว่าง ${TEMP_MIN}–${TEMP_MAX} °C` };
+  }
+  return { ok: true, tg3602: hasA ? a : null, tg3603: hasB ? b : null };
 }
 
 function flag(value, target, direction) {
@@ -246,9 +251,13 @@ export function finishCleaning(status, pump) {
 /** ข้อความ LINE รูปแบบเดิมของ F/O: '22:00\nA\nTemp gauge = 108/65\n\nC\n...' */
 export function formatLineMessage(slotMs, readings) {
   const blocks = readings
-    .filter((r) => !r.voided)
+    .filter((r) => !r.voided && (isNum(r.tg3602) || isNum(r.tg3603)))
     .sort((a, b) => a.pump.localeCompare(b.pump))
-    .map((r) => `${r.pump}\nTemp gauge = ${r.tg3602}/${r.tg3603}`);
+    .map((r) => {
+      const inStr = isNum(r.tg3602) ? String(r.tg3602) : '-';
+      const outStr = isNum(r.tg3603) ? String(r.tg3603) : '-';
+      return `${r.pump}\nTemp gauge = ${inStr}/${outStr}`;
+    });
   return [formatTime(slotMs), blocks.join('\n\n')].filter(Boolean).join('\n');
 }
 
@@ -367,8 +376,7 @@ export function latestReadingOf(readings, pump, nowMs = Date.now()) {
     (r) =>
       r.pump === pump &&
       !r.voided &&
-      isNum(r.tg3602) &&
-      isNum(r.tg3603) &&
+      (isNum(r.tg3602) || isNum(r.tg3603)) &&
       r.slotTime <= nowMs + 30 * 60 * 1000,
   );
   if (mine.length === 0) return null;
@@ -376,8 +384,8 @@ export function latestReadingOf(readings, pump, nowMs = Date.now()) {
   const top = mine[0];
   return {
     slotTime: top.slotTime,
-    tg3602: top.tg3602,
-    tg3603: top.tg3603,
+    tg3602: isNum(top.tg3602) ? top.tg3602 : null,
+    tg3603: isNum(top.tg3603) ? top.tg3603 : null,
     diff: calcDiff(top.tg3602, top.tg3603),
     note: top.note ?? '',
     recordedBy: top.recordedBy ?? '',

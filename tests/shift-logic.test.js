@@ -132,9 +132,14 @@ describe('ค่า temp', () => {
     expect(validateReading({ tg3602: '108', tg3603: '65' })).toEqual({ ok: true, tg3602: 108, tg3603: 65 });
   });
 
-  it('validateReading ปฏิเสธค่าว่าง / ไม่ใช่ตัวเลข / นอกช่วง 0–300', () => {
-    expect(validateReading({ tg3602: '', tg3603: '65' }).ok).toBe(false);
-    expect(validateReading({ tg3602: 'abc', tg3603: '65' }).ok).toBe(false);
+  it('validateReading รองรับ partial reading เช่น มีเฉพาะค่าหน้างานหรือเฉพาะค่า DCS/PI', () => {
+    expect(validateReading({ tg3602: '115', tg3603: '' })).toEqual({ ok: true, tg3602: 115, tg3603: null });
+    expect(validateReading({ tg3602: '', tg3603: '85.8' })).toEqual({ ok: true, tg3602: null, tg3603: 85.8 });
+  });
+
+  it('validateReading ปฏิเสธค่าว่างทั้งคู่ / ไม่ใช่ตัวเลข / นอกช่วง 0–300', () => {
+    expect(validateReading({ tg3602: '', tg3603: '' }).ok).toBe(false);
+    expect(validateReading({ tg3602: 'abc', tg3603: '' }).ok).toBe(false);
     expect(validateReading({ tg3602: '108', tg3603: '-5' }).ok).toBe(false);
     expect(validateReading({ tg3602: '1080', tg3603: '65' }).ok).toBe(false);
   });
@@ -421,6 +426,17 @@ describe('กราฟยาวตามรอบเดิน pump', () => {
 
     it('คืนค่า null ถ้าไม่มีข้อมูลของ pump นั้น', () => {
       expect(latestReadingOf([], 'C')).toBeNull();
+    });
+
+    it('คืนค่า latest reading ได้แม้มีเพียงค่าเดียว เช่น มีเฉพาะ tg3602 จากหน้างาน', () => {
+      const readings = [
+        { pump: 'B', slotTime: bkk(2026, 10, 12, 19), tg3602: 115, tg3603: null },
+      ];
+      const latest = latestReadingOf(readings, 'B');
+      expect(latest).toBeDefined();
+      expect(latest.tg3602).toBe(115);
+      expect(latest.tg3603).toBeNull();
+      expect(latest.diff).toBeNull();
     });
   });
 });

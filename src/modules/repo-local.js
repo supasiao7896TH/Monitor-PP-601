@@ -55,8 +55,8 @@ export function createLocalRepo() {
                 ...prev,
                 ...r,
                 slotTime: Number(r.slotTime),
-                tg3602: Number(r.tg3602),
-                tg3603: Number(r.tg3603),
+                tg3602: r.tg3602 != null ? Number(r.tg3602) : null,
+                tg3603: r.tg3603 != null ? Number(r.tg3603) : null,
                 diff: r.diff != null ? Number(r.diff) : null,
                 voided: !!r.voided,
               };
@@ -159,7 +159,24 @@ export function createLocalRepo() {
     async saveReading(r) {
       const { id, ...data } = r;
       const prev = db.readings[id];
-      const doc = { ...prev, ...data, id, voided: false, createdAt: prev?.createdAt ?? Date.now(), updatedAt: Date.now() };
+      // Smart Merge: ถ้ามีค่าเดิมอยู่ และค่าใหม่ไม่ได้ส่งมา ให้คงค่าเดิมไว้
+      const mergedTg3602 = data.tg3602 != null ? data.tg3602 : prev?.tg3602 ?? null;
+      const mergedTg3603 = data.tg3603 != null ? data.tg3603 : prev?.tg3603 ?? null;
+      let mergedDiff = data.diff;
+      if (mergedDiff == null && mergedTg3602 != null && mergedTg3603 != null) {
+        mergedDiff = Math.round((mergedTg3602 - mergedTg3603) * 10) / 10;
+      }
+      const doc = {
+        ...prev,
+        ...data,
+        tg3602: mergedTg3602,
+        tg3603: mergedTg3603,
+        diff: mergedDiff,
+        id,
+        voided: false,
+        createdAt: prev?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+      };
       db.readings[id] = doc;
       persist();
 

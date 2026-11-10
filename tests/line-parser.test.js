@@ -79,6 +79,42 @@ Temp 128/94`;
     expect(res.replyText).toContain('• PP-601C: 128/94 (Diff 34)');
   });
 
+  it('รองรับกรณีปั๊ม B มีค่าเดี่ยว (TG-2602B จากหน้างาน) ร่วมกับปั๊ม A, C', () => {
+    const text = `22:00
+A 108/65
+B 115
+C 128/105`;
+
+    const refDate = bkk(2026, 10, 28, 22, 5);
+    const res = parseLineMessage(text, refDate);
+
+    expect(res.isPumpReport).toBe(true);
+    expect(res.ok).toBe(true);
+    expect(res.readings.length).toBe(3);
+
+    const b = res.readings.find((r) => r.pump === 'B');
+    expect(b).toBeDefined();
+    expect(b.tg3602).toBe(115);
+    expect(b.tg3603).toBeNull();
+    expect(b.diff).toBeNull();
+    expect(res.replyText).toContain('PP-601B: 115/- (รอ DCS)');
+  });
+
+  it('รองรับกรณีส่งเฉพาะค่าปั๊ม B เดี่ยวๆ เช่น "B 115" หรือ "PP-601B: 115"', () => {
+    const text = `22:00
+PP-601B: 115`;
+
+    const refDate = bkk(2026, 10, 28, 22, 5);
+    const res = parseLineMessage(text, refDate);
+
+    expect(res.isPumpReport).toBe(true);
+    expect(res.ok).toBe(true);
+    expect(res.readings.length).toBe(1);
+    expect(res.readings[0].pump).toBe('B');
+    expect(res.readings[0].tg3602).toBe(115);
+    expect(res.readings[0].tg3603).toBeNull();
+  });
+
   it('ดึงหมายเหตุในวงเล็บได้ เช่น "(ใช้ temp gun)"', () => {
     const text = `10:00
 A

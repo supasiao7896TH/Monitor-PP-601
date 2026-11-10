@@ -58,9 +58,10 @@ export function parseLineMessage(text, refDateMs = Date.now()) {
     };
   }
 
-  // ตรวจสอบเบื้องต้น: ต้องมีรูปแบบตัวเลขคู่ เช่น 108/65 หรือคำว่า temp gauge
+  // ตรวจสอบเบื้องต้น: ต้องมีรูปแบบตัวเลขคู่ เช่น 108/65 หรือตัวเลขเดี่ยวคู่กับปั๊ม เช่น B 115
   const tempPairRegex = /\b(\d{2,3}(?:\.\d+)?)\s*[/]\s*(\d{2,3}(?:\.\d+)?)\b/;
-  if (!tempPairRegex.test(cleaned)) {
+  const tempSingleRegex = /(?:PP[- ]?601\s*|\b)[ABC]\b[^\n\d]*(\d{2,3}(?:\.\d+)?)\b/i;
+  if (!tempPairRegex.test(cleaned) && !tempSingleRegex.test(cleaned)) {
     return { isPumpReport: false };
   }
 
@@ -132,6 +133,32 @@ export function parseLineMessage(text, refDateMs = Date.now()) {
     }
   }
 
+  // รองรับปั๊มที่มีค่าเดี่ยว (เช่น ปั๊ม B มีเฉพาะค่าหน้างาน TG-2602B)
+  const foundPumps = new Set(readings.map((r) => r.pump));
+  const singlePattern = /(?:PP[- ]?601\s*|\b)([ABC])\b[\s:=]*(?:\d{1,2}[:.]\d{2}(?:\s*(?:น\.?|hrs?))?)?[\s:=]*(?:(?:temp(?:\s*gauge)?|TG(?:-\d{4})?)\s*[:=]?\s*|\s*)(\d{2,3}(?:\.\d+)?)(?!\s*[/])(?:[^\n()]*\(([^)]+)\))?/gi;
+
+  let singleMatch;
+  while ((singleMatch = singlePattern.exec(cleaned)) !== null) {
+    const pump = singleMatch[1].toUpperCase();
+    if (foundPumps.has(pump)) continue;
+    const tg3602 = parseFloat(singleMatch[2]);
+    const note = (singleMatch[3] ?? '').trim().slice(0, 200);
+
+    if (tg3602 >= 0 && tg3602 <= 300) {
+      foundPumps.add(pump);
+      readings.push({
+        id: readingId(pump, slotTime),
+        pump,
+        slotTime,
+        shiftId: shiftOf(slotTime),
+        tg3602,
+        tg3603: null,
+        diff: null,
+        note,
+      });
+    }
+  }
+
   if (readings.length === 0) {
     return { isPumpReport: false };
   }
@@ -145,6 +172,9 @@ export function parseLineMessage(text, refDateMs = Date.now()) {
     `✓ บันทึกค่า PP-601 รอบ ${timeStr} เรียบร้อย`,
     ...readings.map((r) => {
       const noteStr = r.note ? ` (${r.note})` : '';
+      if (r.tg3603 == null) {
+        return `• PP-601${r.pump}: ${r.tg3602}/- (รอ DCS)${noteStr}`;
+      }
       return `• PP-601${r.pump}: ${r.tg3602}/${r.tg3603} (Diff ${r.diff})${noteStr}`;
     }),
   ];
@@ -152,7 +182,7 @@ export function parseLineMessage(text, refDateMs = Date.now()) {
   // ตรวจเตือนเกณฑ์ (TG-3603 < 70 หรือ Diff < 20)
   const alarms = [];
   for (const r of readings) {
-    if (r.tg3603 < 70) alarms.push(`⚠ PP-601${r.pump} TG-3603 ต่ำกว่าเกณฑ์ (${r.tg3603} < 70 °C)`);
+    if (r.tg3603 != null && r.tg3603 < 70) alarms.push(`⚠ PP-601${r.pump} TG-3603 ต่ำกว่าเกณฑ์ (${r.tg3603} < 70 °C)`);
     if (r.diff != null && r.diff < 20) alarms.push(`⚠ PP-601${r.pump} Diff ต่ำกว่าเกณฑ์ (${r.diff} < 20 °C)`);
   }
 

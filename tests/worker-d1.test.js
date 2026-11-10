@@ -57,6 +57,39 @@ describe('Cloudflare D1 Integration & Sync', () => {
     expect(executed[0].args[6]).toBe(48);
   });
 
+  it('saveToD1: รองรับ partial reading โดย bind ค่า null ลง D1 อย่างถูกต้อง', async () => {
+    const executed = [];
+    const mockDb = {
+      prepare: vi.fn((sql) => ({
+        bind: vi.fn((...args) => ({ sql, args })),
+      })),
+      batch: vi.fn(async (statements) => {
+        executed.push(...statements);
+        return statements.map(() => ({ success: true }));
+      }),
+    };
+
+    const partialReading = [
+      {
+        id: 'B_202611102200',
+        pump: 'B',
+        slotTime: 1793209200000,
+        shiftId: '2026-11-10_N',
+        tg3602: 115,
+        tg3603: null,
+        diff: null,
+        note: '',
+        recordedBy: 'LINE Bot',
+      },
+    ];
+
+    await saveToD1(partialReading, mockDb);
+    expect(executed.length).toBe(1);
+    expect(executed[0].args[4]).toBe(115);
+    expect(executed[0].args[5]).toBeNull();
+    expect(executed[0].args[6]).toBeNull();
+  });
+
   it('repo-local syncD1: ดึงข้อมูลจาก /api/readings แล้วผสานเข้า IndexedDB/LocalStorage สำเร็จ', async () => {
     const mockApiResponse = {
       ok: true,

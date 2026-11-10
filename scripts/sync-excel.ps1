@@ -41,6 +41,39 @@ foreach ($r in $readings) {
     $readingsBySlot[$slotKey][$r.pump] = $r
 }
 
+# 1.1 OSIsoft PI Auto-Pull Setup for PP-601B (TI-2610B)
+$piServerName = "gcmppisvr"
+$piTagName = "1-pTA.2M.1TI2610B.PV"
+$afDll = "C:\Program Files (x86)\PIPC\AF\PublicAssemblies\4.0\OSIsoft.AFSDK.dll"
+$piPoint = $null
+
+if (Test-Path $afDll) {
+    try {
+        [System.Reflection.Assembly]::LoadFrom($afDll) | Out-Null
+        $srvs = New-Object OSIsoft.AF.PI.PIServers
+        $srv = $srvs[$piServerName]
+        if (-not $srv) { $srv = $srvs.Add($piServerName) }
+        $srv.Connect()
+        $piPoint = [OSIsoft.AF.PI.PIPoint]::FindPIPoint($srv, $piTagName)
+        Write-Host "Connected to PI Server '$piServerName', Tag '$($piPoint.Name)' ready for PP-601B auto-pull."
+    } catch {
+        Write-Warning "PI Auto-Pull initialization failed: $($_.Exception.Message)"
+    }
+}
+
+function Get-PIValueForSlot {
+    param([DateTime]$SlotDt)
+    if (-not $piPoint) { return $null }
+    try {
+        $afTime = [OSIsoft.AF.Time.AFTime]::new($SlotDt)
+        $valObj = $piPoint.InterpolatedValue($afTime)
+        if ($valObj -and $valObj.IsGood) {
+            return [Math]::Round([double]$valObj.Value, 1)
+        }
+    } catch {}
+    return $null
+}
+
 # 2. Check File Lock and Open Excel via COM
 if (-not (Test-Path $ExcelPath)) {
     Write-Error "Excel file not found at: $ExcelPath"
@@ -236,42 +269,94 @@ try {
 
         $rowSlotKey = "$($currentDate.ToString('yyyy-MM-dd')) $normalizedTime"
 
-        if ($readingsBySlot.ContainsKey($rowSlotKey)) {
-            $pumpReadings = $readingsBySlot[$rowSlotKey]
+        $hasD1Readings = $readingsBySlot.ContainsKey($rowSlotKey)
+        $shouldCheckPi = $piPoint -and $slotDateTime -ge (Get-Date).AddHours(-12) -and $slotDateTime -le (Get-Date).AddMinutes(30)
+
+        if ($hasD1Readings -or $shouldCheckPi) {
+            $pumpReadings = if ($hasD1Readings) { $readingsBySlot[$rowSlotKey] } else { @{} }
             $rowModified = $false
 
             # Pump A
             if ($pumpReadings.ContainsKey('A')) {
                 $pA = $pumpReadings['A']
                 $currIn = $ws.Cells.Item($r, 3).Value2
-                if ($null -eq $currIn -or $currIn -eq "" -or [double]$currIn -ne [double]$pA.tg3602) {
+                $currOut = $ws.Cells.Item($r, 4).Value2
+                $aMod = $false
+                if ($null -ne $pA.tg3602 -and $pA.tg3602 -ne "" -and ($null -eq $currIn -or $currIn -eq "" -or [double]$currIn -ne [double]$pA.tg3602)) {
                     $ws.Cells.Item($r, 3).Value2 = [double]$pA.tg3602
+                    $aMod = $true
+                }
+                if ($null -ne $pA.tg3603 -and $pA.tg3603 -ne "" -and ($null -eq $currOut -or $currOut -eq "" -or [double]$currOut -ne [double]$pA.tg3603)) {
                     $ws.Cells.Item($r, 4).Value2 = [double]$pA.tg3603
-                    $ws.Cells.Item($r, 10).Formula = "=C$r-D$r"
+                    $aMod = $true
+                }
+                if ($aMod) {
+                    $ws.Cells.Item($r, 10).Formula = "=IF(AND(ISNUMBER(C$r),ISNUMBER(D$r)),C$r-D$r,"""")"
                     $rowModified = $true
                 }
             }
 
             # Pump B
-            if ($pumpReadings.ContainsKey('B')) {
-                $pB = $pumpReadings['B']
-                $currIn = $ws.Cells.Item($r, 5).Value2
-                if ($null -eq $currIn -or $currIn -eq "" -or [double]$currIn -ne [double]$pB.tg3602) {
-                    $ws.Cells.Item($r, 5).Value2 = [double]$pB.tg3602
-                    $ws.Cells.Item($r, 6).Value2 = [double]$pB.tg3603
-                    $ws.Cells.Item($r, 11).Formula = "=E$r-F$r"
-                    $rowModified = $true
+            $pB = if ($pumpReadings.ContainsKey('B')) { $pumpReadings['B'] } else { $null }
+            $bInVal = if ($pB -and $null -ne $pB.tg3602 -and $pB.tg3602 -ne "") { [double]$pB.tg3602 } else { $null }
+            $bOutVal = if ($pB -and $null -ne $pB.tg3603 -and $pB.tg3603 -ne "") { [double]$pB.tg3603 } else { $null }
+
+            # Auto-pull TI-2610B from PI if Out is missing and slot is recent
+            if ($null -eq $bOutVal -and $shouldCheckPi) {
+                $piVal = Get-PIValueForSlot -SlotDt $slotDateTime
+                if ($null -ne $piVal) {
+                    $bOutVal = $piVal
+                    # Push back to Cloudflare D1 so Web App & LINE Bot get it immediately
+                    try {
+                        $utcMs = [long]([DateTimeOffset]::new($slotDateTime, [TimeSpan]::FromHours(7)).ToUnixTimeMilliseconds())
+                        $bId = "B_$($slotDateTime.ToString('yyyyMMddHHmm'))"
+                        $postBody = @{
+                            id = $bId
+                            pump = "B"
+                            slotTime = $utcMs
+                            tg3603 = $bOutVal
+                            recordedBy = "PI DataLink"
+                        } | ConvertTo-Json
+                        Invoke-RestMethod -Uri "https://monitor-pp-601.supasiao.workers.dev/api/readings" -Method POST -Body $postBody -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                        Write-Host "  [PI AUTO-PULL] Row $r [$rowSlotKey] TI-2610B -> $bOutVal °C synced to D1"
+                    } catch {
+                        Write-Warning "Failed to push PI reading to D1: $($_.Exception.Message)"
+                    }
                 }
+            }
+
+            $currBIn = $ws.Cells.Item($r, 5).Value2
+            $currBOut = $ws.Cells.Item($r, 6).Value2
+            $bMod = $false
+            if ($null -ne $bInVal -and ($null -eq $currBIn -or $currBIn -eq "" -or [double]$currBIn -ne $bInVal)) {
+                $ws.Cells.Item($r, 5).Value2 = $bInVal
+                $bMod = $true
+            }
+            if ($null -ne $bOutVal -and ($null -eq $currBOut -or $currBOut -eq "" -or [double]$currBOut -ne $bOutVal)) {
+                $ws.Cells.Item($r, 6).Value2 = $bOutVal
+                $bMod = $true
+            }
+            if ($bMod) {
+                $ws.Cells.Item($r, 11).Formula = "=IF(AND(ISNUMBER(E$r),ISNUMBER(F$r)),E$r-F$r,"""")"
+                $rowModified = $true
             }
 
             # Pump C
             if ($pumpReadings.ContainsKey('C')) {
                 $pC = $pumpReadings['C']
                 $currIn = $ws.Cells.Item($r, 7).Value2
-                if ($null -eq $currIn -or $currIn -eq "" -or [double]$currIn -ne [double]$pC.tg3602) {
+                $currOut = $ws.Cells.Item($r, 8).Value2
+                $cMod = $false
+                if ($null -ne $pC.tg3602 -and $pC.tg3602 -ne "" -and ($null -eq $currIn -or $currIn -eq "" -or [double]$currIn -ne [double]$pC.tg3602)) {
                     $ws.Cells.Item($r, 7).Value2 = [double]$pC.tg3602
+                    $cMod = $true
+                }
+                if ($null -ne $pC.tg3603 -and $pC.tg3603 -ne "" -and ($null -eq $currOut -or $currOut -eq "" -or [double]$currOut -ne [double]$pC.tg3603)) {
                     $ws.Cells.Item($r, 8).Value2 = [double]$pC.tg3603
-                    $ws.Cells.Item($r, 12).Formula = "=G$r-H$r"
+                    $cMod = $true
+                }
+                if ($cMod) {
+                    $ws.Cells.Item($r, 12).Formula = "=IF(AND(ISNUMBER(G$r),ISNUMBER(H$r)),G$r-H$r,"""")"
                     $rowModified = $true
                 }
             }
@@ -280,9 +365,10 @@ try {
                 if (-not $ws.Cells.Item($r, 9).Value2) { $ws.Cells.Item($r, 9).Value2 = 70 }
                 if (-not $ws.Cells.Item($r, 13).Value2) { $ws.Cells.Item($r, 13).Value2 = 20 }
                 $logA = if ($pumpReadings.ContainsKey('A')) { "$($pumpReadings['A'].tg3602)/$($pumpReadings['A'].tg3603)" } else { "-/-" }
+                $logB = "$($bInVal)/$($bOutVal)"
                 $logC = if ($pumpReadings.ContainsKey('C')) { "$($pumpReadings['C'].tg3602)/$($pumpReadings['C'].tg3603)" } else { "-/-" }
                 $updatedRows++
-                Write-Host "  Updated Row $r [$rowSlotKey] -> A: $logA | C: $logC"
+                Write-Host "  Updated Row $r [$rowSlotKey] -> A: $logA | B: $logB | C: $logC"
             }
         }
     }

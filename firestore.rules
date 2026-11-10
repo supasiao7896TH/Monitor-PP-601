@@ -8,15 +8,17 @@ service cloud.firestore {
     function numOrNull(v) { return v == null || v is number; }
     function state(v) { return v in ['RUN', 'STANDBY', 'CLEANING']; }
     function dir(v) { return v in ['above', 'below']; }
+    function tempOrNull(v) { return v == null || temp(v); }
 
     // ค่า temp: 1 doc ต่อ pump ต่อ slot — ทีมแก้ไขได้ (uid เปลี่ยนทุกครั้งที่เปิดแอป) แต่ห้ามลบ
     function validReading(d) {
-      return d.keys().hasAll(['pump', 'slotTime', 'tg3602', 'tg3603', 'recordedBy'])
-        && d.keys().hasOnly(['pump', 'slotTime', 'shiftId', 'tg3602', 'tg3603', 'note',
+      return d.keys().hasAll(['pump', 'slotTime', 'recordedBy'])
+        && d.keys().hasOnly(['pump', 'slotTime', 'shiftId', 'tg3602', 'tg3603', 'diff', 'note',
                              'recordedBy', 'voided', 'voidedBy', 'updatedAt'])
         && d.pump in ['A', 'B', 'C']
         && d.slotTime is number
-        && temp(d.tg3602) && temp(d.tg3603)
+        && tempOrNull(d.get('tg3602', null)) && tempOrNull(d.get('tg3603', null))
+        && (temp(d.get('tg3602', -1)) || temp(d.get('tg3603', -1)))
         && str(d.recordedBy, 40)
         && str(d.get('note', ''), 200)
         && str(d.get('voidedBy', ''), 40)
