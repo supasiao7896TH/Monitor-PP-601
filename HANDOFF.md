@@ -1,14 +1,15 @@
 # HANDOFF.md — PP-601 Monitor (ส่งต่องาน มือถือ → PC บ้าน / PC เครื่องใหม่)
 
-อัปเดต: 2026-11-10 (Auto-Extend Template Engine + Auto-Date Continuity) · Branch: `main` · Unit Tests 89 ข้อผ่าน 100%
+อัปเดต: 2026-11-10 (PP-601B Dual-Source Logging & OSIsoft PI Auto-Pull) · Branch: `main` · Unit Tests 94 ข้อผ่าน 100%
 
 ## สถานะ
 | ส่วน | สถานะ |
 |---|---|
+| PP-601B Dual-Source & PI Auto-Pull | ✅ เสร็จสมบูรณ์ ดึงค่า `TI-2610B` จาก PI `\\gcmppisvr\1-pTA.2M.1TI2610B.PV` ลง Excel Col F & D1 อัตโนมัติ 100% + F/O ส่งค่าเดี่ยวทาง LINE/เว็บได้โดยไม่บล็อก |
 | หน้าจอ Dashboard สำหรับ PC (Control Room Widescreen) | ✅ เสร็จ 3-Column Header Grid + ตาราง Full-Width + กราฟแนวโน้มเต็มจอ + **Auto-Polling ทุก 60 วินาที** (อัปเดตเองไม่ง้อเมาส์) |
 | Web Bundle Optimization | ✅ **ลดขนาด Bundle จาก 838 kB เหลือ 214 kB (-74%)** ด้วย Dynamic Import Firebase |
 | กราฟความละเอียดสูง (Dual Y-Axis, Dynamic Zoom, 320px) | ✅ เสร็จ กราฟ Widescreen บน PC พร้อมปุ่มเลือก 24 ชม. (8 รอบ) / 48 ชม. / 7 วัน + แสดงค่าล่าสุด |
-| Unit Tests (Vitest) | ✅ **89 ข้อผ่าน 100%** (เทสต์คลุม shift-logic, line-parser, import-excel, worker-d1) |
+| Unit Tests (Vitest) | ✅ **94 ข้อผ่าน 100%** (เทสต์คลุม shift-logic, line-parser, import-excel, worker-d1) |
 | Cloudflare D1 Database (`pp601-db`) | ✅ ครบ 3 ตาราง: `readings`, `app_state` (status/limits), และ `events` (ไทม์ไลน์สลับปั๊ม/งานล้าง) ซิงก์ข้ามเครื่อง 100% |
 | LINE Bot Webhook & Interactive Commands | ✅ รองรับบันทึกอุณหภูมิ + **คำสั่งพิเศษ `status`, `สรุป`, `help`** ตอบสถานะปั๊ม 3 ตัวทันทีใน LINE |
 | ซิงก์อัตโนมัติ LINE ➔ D1 ➔ หน้าเว็บ | ✅ เสร็จสมบูรณ์ เมื่อ F/O ส่งใน LINE บอทเซฟลง D1 และหน้าเว็บดึงมาวาดกราฟอัตโนมัติ |
