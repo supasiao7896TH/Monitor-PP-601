@@ -65,7 +65,8 @@ function Get-PIValueForSlot {
     param([DateTime]$SlotDt)
     if (-not $piPoint) { return $null }
     try {
-        $afTime = [OSIsoft.AF.Time.AFTime]::new($SlotDt)
+        $localDt = [DateTime]::SpecifyKind($SlotDt, [DateTimeKind]::Local)
+        $afTime = [OSIsoft.AF.Time.AFTime]::new($localDt)
         $valObj = $piPoint.InterpolatedValue($afTime)
         if ($valObj -and $valObj.IsGood) {
             return [Math]::Round([double]$valObj.Value, 1)
@@ -301,34 +302,43 @@ try {
             $bInVal = if ($pB -and $null -ne $pB.tg3602 -and $pB.tg3602 -ne "") { [double]$pB.tg3602 } else { $null }
             $bOutVal = if ($pB -and $null -ne $pB.tg3603 -and $pB.tg3603 -ne "") { [double]$pB.tg3603 } else { $null }
 
-            # Auto-pull TI-2610B from PI if Out is missing and slot is recent
-            if ($null -eq $bOutVal -and $shouldCheckPi) {
+            # Auto-pull TI-2610B from PI if Out is missing or if existing Out differs from the actual PI value
+            if ($shouldCheckPi) {
                 $piVal = Get-PIValueForSlot -SlotDt $slotDateTime
                 if ($null -ne $piVal) {
-                    $bOutVal = $piVal
-                    # Push back to Cloudflare D1 so Web App & LINE Bot get it immediately
-                    try {
-                        $utcMs = [long]([DateTimeOffset]::new($slotDateTime, [TimeSpan]::FromHours(7)).ToUnixTimeMilliseconds())
-                        $bId = "B_$($slotDateTime.ToString('yyyyMMddHHmm'))"
-                        $h = $slotDateTime.Hour
-                        $mi = $slotDateTime.Minute
-                        $isNight = ($h -lt 7) -or ($h -eq 7 -and $mi -lt 30) -or ($h -gt 19) -or ($h -eq 19 -and $mi -ge 30)
-                        $sDate = if ($h -lt 7 -or ($h -eq 7 -and $mi -lt 30)) { $slotDateTime.AddDays(-1) } else { $slotDateTime }
-                        $sKind = if ($isNight) { "N" } else { "D" }
-                        $shiftId = "$($sDate.ToString('yyyy-MM-dd'))_$sKind"
+                    if ($null -eq $bOutVal -or [Math]::Abs($bOutVal - $piVal) -gt 0.05) {
+                        $oldVal = $bOutVal
+                        $bOutVal = $piVal
+                        # Push back to Cloudflare D1 so Web App & LINE Bot get it immediately
+                        try {
+                            $utcMs = [long]([DateTimeOffset]::new($slotDateTime, [TimeSpan]::FromHours(7)).ToUnixTimeMilliseconds())
+                            $bId = "B_$($slotDateTime.ToString('yyyyMMddHHmm'))"
+                            $h = $slotDateTime.Hour
+                            $mi = $slotDateTime.Minute
+                            $isNight = ($h -lt 7) -or ($h -eq 7 -and $mi -lt 30) -or ($h -gt 19) -or ($h -eq 19 -and $mi -ge 30)
+                            $sDate = if ($h -lt 7 -or ($h -eq 7 -and $mi -lt 30)) { $slotDateTime.AddDays(-1) } else { $slotDateTime }
+                            $sKind = if ($isNight) { "N" } else { "D" }
+                            $shiftId = "$($sDate.ToString('yyyy-MM-dd'))_$sKind"
 
-                        $postBody = @{
-                            id = $bId
-                            pump = "B"
-                            slotTime = $utcMs
-                            shiftId = $shiftId
-                            tg3603 = $bOutVal
-                            recordedBy = "PI DataLink"
-                        } | ConvertTo-Json
-                        Invoke-RestMethod -Uri "https://monitor-pp-601.supasiao.workers.dev/api/readings" -Method POST -Body $postBody -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                        Write-Host "  [PI AUTO-PULL] Row $r [$rowSlotKey] TI-2610B -> $bOutVal °C synced to D1"
-                    } catch {
-                        Write-Warning "Failed to push PI reading to D1: $($_.Exception.Message)"
+                            $recBy = if ($pB -and $pB.recordedBy -and $pB.recordedBy -notmatch "PI DataLink") {
+                                "$($pB.recordedBy) / PI DataLink"
+                            } else {
+                                "PI DataLink"
+                            }
+
+                            $postBody = @{
+                                id = $bId
+                                pump = "B"
+                                slotTime = $utcMs
+                                shiftId = $shiftId
+                                tg3603 = $bOutVal
+                                recordedBy = $recBy
+                            } | ConvertTo-Json
+                            Invoke-RestMethod -Uri "https://monitor-pp-601.supasiao.workers.dev/api/readings" -Method POST -Body $postBody -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                            Write-Host "  [PI AUTO-PULL] Row $r [$rowSlotKey] TI-2610B -> $bOutVal °C synced to D1 (was: $oldVal)"
+                        } catch {
+                            Write-Warning "Failed to push PI reading to D1: $($_.Exception.Message)"
+                        }
                     }
                 }
             }
