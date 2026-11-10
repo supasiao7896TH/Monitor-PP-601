@@ -38,7 +38,7 @@ export default {
           if (parsed.isPumpReport) {
             // บันทึกลง Cloudflare D1 Database (SQLite)
             if (env.DB) {
-              ctx.waitUntil(saveToD1(parsed.readings, env.DB));
+              ctx.waitUntil(ensureSchema(env.DB).then(() => saveToD1(parsed.readings, env.DB)));
             }
 
             // บันทึกลง Firestore (ถ้ามีการกำหนด FIREBASE_PROJECT_ID)
@@ -88,6 +88,7 @@ export default {
         try {
           const body = await request.json();
           const items = Array.isArray(body) ? body : [body];
+          await ensureSchema(env.DB);
           await saveToD1(items, env.DB);
           return new Response(JSON.stringify({ ok: true, count: items.length }), {
             headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -303,6 +304,46 @@ export default {
   },
 };
 
+let schemaEnsured = false;
+export async function ensureSchema(db) {
+  if (!db || schemaEnsured) return;
+  try {
+    const stmt = db.prepare('PRAGMA table_info(readings)');
+    if (!stmt || typeof stmt.all !== 'function') {
+      schemaEnsured = true;
+      return;
+    }
+    const { results } = await stmt.all();
+    const tg3603Col = results?.find((c) => c.name === 'tg3603');
+    if (tg3603Col && tg3603Col.notnull === 1) {
+      await db.batch([
+        db.prepare(`
+          CREATE TABLE IF NOT EXISTS readings_v2 (
+            id TEXT PRIMARY KEY,
+            pump TEXT NOT NULL,
+            slotTime INTEGER NOT NULL,
+            shiftId TEXT NOT NULL,
+            tg3602 REAL,
+            tg3603 REAL,
+            diff REAL,
+            note TEXT DEFAULT '',
+            recordedBy TEXT DEFAULT 'LINE Bot',
+            updatedAt INTEGER NOT NULL
+          )
+        `),
+        db.prepare(`INSERT OR IGNORE INTO readings_v2 SELECT id, pump, slotTime, shiftId, tg3602, tg3603, diff, note, recordedBy, updatedAt FROM readings`),
+        db.prepare(`DROP TABLE readings`),
+        db.prepare(`ALTER TABLE readings_v2 RENAME TO readings`),
+        db.prepare(`CREATE INDEX IF NOT EXISTS idx_readings_slotTime ON readings(slotTime DESC)`),
+        db.prepare(`CREATE INDEX IF NOT EXISTS idx_readings_shiftId ON readings(shiftId)`),
+      ]);
+    }
+    schemaEnsured = true;
+  } catch (err) {
+    console.error('ensureSchema error:', err);
+  }
+}
+
 /**
  * บันทึก Readings เข้า Cloudflare D1
  */
@@ -344,6 +385,7 @@ export async function saveToD1(readings, db) {
     await db.batch(batch);
   } catch (err) {
     console.error('saveToD1 error:', err);
+    throw err;
   }
 }
 
