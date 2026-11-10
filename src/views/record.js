@@ -7,6 +7,7 @@ import {
   shiftRange,
   shiftSlots,
   shiftLabel,
+  adjacentShift,
   readingId,
   calcDiff,
   validateReading,
@@ -26,7 +27,7 @@ const dayMonth = (ms) => {
   return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 
-/** slot ที่เลือกได้: ปัจจุบัน + ย้อนหลัง 24 ชม. (เผื่อจดย้อนหลัง/ลืมจด) */
+/** slot ที่เลือกได้: ปัจจุบัน + ย้อนหลัง 24 ชม. */
 function slotChoices(now) {
   const cur = nearestSlot(now);
   return Array.from({ length: 9 }, (_, i) => cur - i * 3 * HOUR);
@@ -34,7 +35,9 @@ function slotChoices(now) {
 
 export function mount(root, { repo, store }) {
   let slot = nearestSlot(Date.now());
-  let manualSlot = false; // ผู้ใช้เลือก slot เอง → ไม่เลื่อนตามเวลาจริงอีก
+  let shiftId = shiftOf(slot);
+  let manualSlot = false; // ผู้ใช้เลือก slot หรือ shift เอง → ไม่เลื่อนตามเวลาจริงอีก
+  let entryMode = 'single'; // 'single' | 'batch'
   let openSig = '';
   const hintEl = h('p', { class: 'caption', id: 'rec-slot-hint', role: 'status' });
   let readings = [];
@@ -60,14 +63,20 @@ export function mount(root, { repo, store }) {
     oninput: (e) => store.set('name', e.target.value.trim()),
   });
 
-  const existing = (pump) => readings.find((r) => r.pump === pump && r.slotTime === slot && !r.voided);
+  const existing = (pump, targetSlot = slot) =>
+    readings.find((r) => r.pump === pump && r.slotTime === targetSlot && !r.voided);
 
   // ---------- สถานะ pump ----------
   function renderStatus() {
     clear(statusBox);
     const status = store.get('status');
     statusBox.append(
-      h('div', { class: 'row-between' }, h('h2', {}, 'สถานะ pump'), h('button', { class: 'btn btn-soft btn-sm', type: 'button', onclick: () => openSwitchDialog({ repo, store }) }, 'สลับ pump')),
+      h(
+        'div',
+        { class: 'row-between' },
+        h('h2', {}, 'สถานะ pump'),
+        h('button', { class: 'btn btn-soft btn-sm', type: 'button', onclick: () => openSwitchDialog({ repo, store }) }, 'สลับ pump'),
+      ),
       h(
         'div',
         { class: 'pump-grid' },
@@ -80,76 +89,152 @@ export function mount(root, { repo, store }) {
           ),
         ),
       ),
-      store.get('statusIsDefault') ? h('p', { class: 'caption warn-text' }, 'ยังไม่เคยตั้งสถานะ — ใช้ค่าเริ่มต้น A,C เดิน / B standby ตรวจให้ตรงหน้างาน (ตั้งได้ที่ "ตั้งค่า")') : null,
+      store.get('statusIsDefault')
+        ? h('p', { class: 'caption warn-text' }, 'ยังไม่เคยตั้งสถานะ — ใช้ค่าเริ่มต้น A,C เดิน / B standby ตรวจให้ตรงหน้างาน (ตั้งได้ที่ "ตั้งค่า")')
+        : null,
     );
   }
 
-  // ---------- ความครบของกะ ----------
+  // เลื่อนกะก่อนหน้า/ถัดไป (กดย้อนหลังได้ไม่จำกัด)
+  function changeShift(dir) {
+    shiftId = adjacentShift(shiftId, dir);
+    const slots = shiftSlots(shiftId);
+    slot = slots[0];
+    manualSlot = true;
+    touched.clear();
+    watch();
+    renderAll();
+  }
+
+  // ---------- ส่วนเลือกกะ & เวลา ----------
   function renderShift() {
     clear(shiftBox);
-    const sid = shiftOf(slot);
     const now = Date.now();
     const need = recordablePumps(store.get('status'));
-    const slots = shiftSlots(sid);
+    const slots = shiftSlots(shiftId);
     const options = slotChoices(now);
     if (!options.includes(slot)) options.push(slot);
 
-    const select = h(
-      'select',
-      {
-        id: 'rec-slot',
-        class: 'input',
-        onchange: (e) => {
-          slot = Number(e.target.value);
-          manualSlot = true;
-          touched.clear();
-          watch();
-          renderAll();
+    // Mode Switch: จดทีละเวลา vs กรอกทั้งกะ (Batch Grid)
+    const modeSwitch = h(
+      'div',
+      { class: 'mode-switch-bar' },
+      h(
+        'button',
+        {
+          class: `btn btn-sm ${entryMode === 'single' ? 'btn-primary' : 'btn-outline'}`,
+          type: 'button',
+          onclick: () => {
+            if (entryMode === 'single') return;
+            entryMode = 'single';
+            renderAll();
+          },
         },
-      },
-      options.map((s) => h('option', { value: s, selected: s === slot }, `${dayMonth(s)} ${formatTime(s)}`)),
+        '⏱️ จดทีละเวลา (Single)',
+      ),
+      h(
+        'button',
+        {
+          class: `btn btn-sm ${entryMode === 'batch' ? 'btn-primary' : 'btn-outline'}`,
+          type: 'button',
+          onclick: () => {
+            if (entryMode === 'batch') return;
+            entryMode = 'batch';
+            renderAll();
+          },
+        },
+        '📋 กรอกทั้งกะ (Batch Grid)',
+      ),
     );
 
-    shiftBox.append(
-      h('h2', {}, shiftLabel(sid)),
-      h('div', { class: 'slot-chips', role: 'group', 'aria-label': 'slot ของกะนี้' }, slots.map((s) => {
-        const done = need.length > 0 && need.every((p) => readings.some((r) => r.pump === p && r.slotTime === s && !r.voided));
-        const future = !isSlotOpen(s, now);
-        const cls = ['slot-chip', done ? 'slot-done' : '', future ? 'slot-future' : '', s === slot ? 'slot-current' : ''].join(' ');
-        return h('button', { class: cls, type: 'button', disabled: future, onclick: () => ((slot = s), (manualSlot = true), touched.clear(), watch(), renderAll()) }, `${done ? '✓ ' : ''}${formatTime(s)}`);
-      })),
-      hintEl,
-      h('label', { for: 'rec-slot' }, 'เวลา slot ที่จะจด'),
-      select,
+    // Shift Navigation (‹ กะก่อนหน้า / กะถัดไป ›)
+    const shiftNav = h(
+      'div',
+      { class: 'shift-nav-bar' },
+      h('button', { class: 'btn btn-outline btn-sm', type: 'button', 'aria-label': 'กะก่อนหน้า', onclick: () => changeShift(-1) }, '‹ กะก่อนหน้า'),
+      h('div', { class: 'shift-title-wrap' }, h('h2', {}, shiftLabel(shiftId))),
+      h('button', { class: 'btn btn-outline btn-sm', type: 'button', 'aria-label': 'กะถัดไป', onclick: () => changeShift(1) }, 'กะถัดไป ›'),
     );
-    openSig = slots.map((s) => isSlotOpen(s, now)).join();
-    updateHint();
+
+    shiftBox.append(modeSwitch, shiftNav);
+
+    if (entryMode === 'single') {
+      const select = h(
+        'select',
+        {
+          id: 'rec-slot',
+          class: 'input',
+          onchange: (e) => {
+            slot = Number(e.target.value);
+            shiftId = shiftOf(slot);
+            manualSlot = true;
+            touched.clear();
+            watch();
+            renderAll();
+          },
+        },
+        options.map((s) => h('option', { value: s, selected: s === slot }, `${dayMonth(s)} ${formatTime(s)}`)),
+      );
+
+      shiftBox.append(
+        h(
+          'div',
+          { class: 'slot-chips', role: 'group', 'aria-label': 'slot ของกะนี้' },
+          slots.map((s) => {
+            const done = need.length > 0 && need.every((p) => readings.some((r) => r.pump === p && r.slotTime === s && !r.voided));
+            const future = !isSlotOpen(s, now);
+            const cls = ['slot-chip', done ? 'slot-done' : '', future ? 'slot-future' : '', s === slot ? 'slot-current' : ''].join(' ');
+            return h(
+              'button',
+              {
+                class: cls,
+                type: 'button',
+                disabled: future,
+                onclick: () => {
+                  slot = s;
+                  shiftId = shiftOf(s);
+                  manualSlot = true;
+                  touched.clear();
+                  watch();
+                  renderAll();
+                },
+              },
+              `${done ? '✓ ' : ''}${formatTime(s)}`,
+            );
+          }),
+        ),
+        hintEl,
+        h('label', { for: 'rec-slot' }, 'เวลา slot ที่จะจด (หรือเลือกจากด้านบน)'),
+        select,
+      );
+      openSig = slots.map((s) => isSlotOpen(s, now)).join();
+      updateHint();
+    }
   }
 
   function updateHint() {
     hintEl.textContent = slotHint(slot, Date.now());
   }
 
-  /** ทุกนาที/เมื่อกลับมาที่หน้านี้: ถ้ายังไม่ได้เลือก slot เอง และยังไม่ได้พิมพ์อะไร → เลื่อน slot ตามเวลาจริง */
   function tick() {
     const now = Date.now();
     const next = nearestSlot(now);
-    if (!manualSlot && touched.size === 0 && next !== slot) {
+    if (entryMode === 'single' && !manualSlot && touched.size === 0 && next !== slot) {
       slot = next;
+      shiftId = shiftOf(next);
       watch();
       renderAll();
-      toast(`เลื่อนเป็น slot ${formatTime(next)} ตามเวลาปัจจุบัน`, 'warn'); // บอกชัดๆ กันเลื่อนเงียบตอนกำลังอ่านค่าจาก DCS
+      toast(`เลื่อนเป็น slot ${formatTime(next)} ตามเวลาปัจจุบัน`, 'warn');
       return;
     }
     updateHint();
-    // ปุ่ม slot เปิด/ปิดตามเวลา — วาดใหม่เฉพาะเมื่อสถานะเปลี่ยน (ไม่ปิด dropdown ที่กำลังเปิดอยู่ทุกนาที)
-    if (shiftSlots(shiftOf(slot)).map((s) => isSlotOpen(s, now)).join() !== openSig) renderShift();
+    if (entryMode === 'single' && shiftSlots(shiftId).map((s) => isSlotOpen(s, now)).join() !== openSig) renderShift();
   }
   const timer = setInterval(tick, 30 * 1000);
   const onVisible = () => document.visibilityState === 'visible' && tick();
   document.addEventListener('visibilitychange', onVisible);
 
-  // ---------- ฟอร์ม ----------
+  // ---------- ฟอร์มโหมด Single (ทีละ slot) ----------
   const inputs = {}; // pump -> { a, b, note, diffOut }
 
   function renderForm() {
@@ -247,7 +332,6 @@ export function mount(root, { repo, store }) {
     );
   }
 
-  /** เติมค่าจากฐานข้อมูลเฉพาะช่องที่ผู้ใช้ยังไม่ได้แตะ — ไม่ทับสิ่งที่กำลังพิมพ์ */
   function prefill() {
     for (const [p, f] of Object.entries(inputs)) {
       if (!f.a.isConnected) continue;
@@ -268,10 +352,18 @@ export function mount(root, { repo, store }) {
     if (!by) return void (errEl.textContent = 'กรอกชื่อผู้จดก่อนบันทึก');
 
     const jobs = [];
+    const voidJobs = [];
+
     for (const p of pumps) {
       const f = inputs[p];
       const empty = f.a.value.trim() === '' && f.b.value.trim() === '';
-      if (empty) continue;
+      const ex = existing(p);
+
+      if (empty) {
+        if (ex && !ex.voided) voidJobs.push(ex);
+        continue;
+      }
+
       const v = validateReading({ tg3602: f.a.value, tg3603: f.b.value });
       if (!v.ok) return void (errEl.textContent = `PP-601${p}: ${v.error}`);
       jobs.push({
@@ -285,11 +377,24 @@ export function mount(root, { repo, store }) {
         recordedBy: by.slice(0, 40),
       });
     }
-    if (jobs.length === 0) return void (errEl.textContent = 'ยังไม่ได้กรอกค่า');
 
-    const results = await Promise.all(jobs.map((j) => repo.saveReading(j)));
+    if (jobs.length === 0 && voidJobs.length === 0) {
+      return void (errEl.textContent = 'ยังไม่ได้กรอกค่า');
+    }
+
+    const results = await Promise.all([
+      ...jobs.map((j) => repo.saveReading(j)),
+      ...voidJobs.map((v) => repo.voidReading(v.id, by)),
+    ]);
     touched.clear();
-    toast(results.includes('pending') ? 'บันทึกแล้ว — รอซิงก์เมื่อมีสัญญาณ' : `บันทึก ${formatTime(slot)} แล้ว`, results.includes('pending') ? 'warn' : 'ok');
+
+    if (jobs.length === 0 && voidJobs.length > 0) {
+      toast(`ยกเลิกรายการเวลา ${formatTime(slot)} เรียบร้อยแล้ว`, 'ok');
+    } else if (jobs.length > 0 && voidJobs.length > 0) {
+      toast(`บันทึกค่าและยกเลิกรายการที่ลบแล้ว (${formatTime(slot)})`, 'ok');
+    } else {
+      toast(results.includes('pending') ? 'บันทึกแล้ว — รอซิงก์เมื่อมีสัญญาณ' : `บันทึก ${formatTime(slot)} แล้ว`, results.includes('pending') ? 'warn' : 'ok');
+    }
   }
 
   async function voidOne(r) {
@@ -307,27 +412,190 @@ export function mount(root, { repo, store }) {
     toast(ok ? 'คัดลอกข้อความแล้ว วางใน LINE ได้เลย' : 'คัดลอกไม่สำเร็จ', ok ? 'ok' : 'error');
   }
 
+  // ---------- ฟอร์มโหมด Batch Grid (กรอกทั้งกะ) ----------
+  const batchInputs = {};
+
+  function renderBatch() {
+    clear(formBox);
+    const status = store.get('status');
+    const slots = shiftSlots(shiftId);
+    const pumps = PUMPS.filter((p) => recordablePumps(status).includes(p) || readings.some((r) => r.pump === p && !r.voided));
+
+    formBox.append(
+      h(
+        'div',
+        { class: 'row-between' },
+        h('h2', {}, 'กรอกข้อมูลทั้งกะ (4 รอบเวลา)'),
+        h('span', { class: 'caption' }, 'ลบตัวเลขออก = ยกเลิกค่านั้น'),
+      ),
+    );
+
+    if (pumps.length === 0) {
+      formBox.append(h('p', { class: 'caption' }, 'ไม่มี pump ที่ RUN ในกะนี้'));
+      return;
+    }
+
+    const table = h('table', { class: 'tbl batch-tbl' });
+    const thead = h(
+      'thead',
+      {},
+      h(
+        'tr',
+        {},
+        h('th', { rowSpan: 2, class: 'batch-time-th' }, 'เวลา'),
+        pumps.map((p) => h('th', { colSpan: 2, class: 'grp' }, `PP-601${p}`)),
+      ),
+      h(
+        'tr',
+        {},
+        pumps.flatMap((p) => [
+          h('th', { class: 'sub' }, p === 'B' ? 'In (2602)' : 'In (3602)'),
+          h('th', { class: 'sub' }, p === 'B' ? 'Out (2603)' : 'Out (3603)'),
+        ]),
+      ),
+    );
+
+    const tbody = h('tbody');
+    for (const s of slots) {
+      batchInputs[s] = batchInputs[s] || {};
+      const rowTds = [];
+      for (const p of pumps) {
+        const ex = readings.find((r) => r.pump === p && r.slotTime === s && !r.voided);
+        const a = h('input', {
+          id: `batch-a-${s}-${p}`,
+          class: 'input num batch-input',
+          type: 'text',
+          inputMode: 'decimal',
+          autocomplete: 'off',
+          placeholder: 'In',
+          'aria-label': `PP-601${p} เวลา ${formatTime(s)} In`,
+          value: ex?.tg3602 != null ? ex.tg3602 : '',
+        });
+        const b = h('input', {
+          id: `batch-b-${s}-${p}`,
+          class: 'input num batch-input',
+          type: 'text',
+          inputMode: 'decimal',
+          autocomplete: 'off',
+          placeholder: 'Out',
+          'aria-label': `PP-601${p} เวลา ${formatTime(s)} Out`,
+          value: ex?.tg3603 != null ? ex.tg3603 : '',
+        });
+        batchInputs[s][p] = { a, b, ex };
+        rowTds.push(h('td', { class: 'batch-td' }, a), h('td', { class: 'batch-td' }, b));
+      }
+      tbody.append(h('tr', {}, h('th', { scope: 'row', class: 'batch-time-th' }, formatTime(s)), rowTds));
+    }
+
+    table.append(thead, tbody);
+    const wrap = h('div', { class: 'tbl-wrap batch-tbl-wrap' }, table);
+    const err = h('p', { class: 'form-error', role: 'alert', id: 'rec-batch-error' });
+
+    formBox.append(
+      wrap,
+      h('label', { for: 'rec-name' }, 'ผู้จด'),
+      nameInput,
+      err,
+      h(
+        'div',
+        { class: 'btn-row' },
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => saveBatch(pumps, slots, err) }, '💾 บันทึกข้อมูลทั้งกะ (Save All)'),
+        h('button', { class: 'btn btn-outline', type: 'button', onclick: copyBatchLine }, 'คัดลอกข้อความ LINE กะนี้'),
+      ),
+    );
+  }
+
+  async function saveBatch(pumps, slots, errEl) {
+    errEl.textContent = '';
+    const by = (store.get('name') ?? '').trim();
+    if (!by) return void (errEl.textContent = 'กรอกชื่อผู้จดก่อนบันทึก');
+
+    const jobs = [];
+    const voidJobs = [];
+
+    for (const s of slots) {
+      for (const p of pumps) {
+        const f = batchInputs[s]?.[p];
+        if (!f) continue;
+        const empty = f.a.value.trim() === '' && f.b.value.trim() === '';
+        const ex = readings.find((r) => r.pump === p && r.slotTime === s && !r.voided);
+
+        if (empty) {
+          if (ex) voidJobs.push(ex);
+          continue;
+        }
+
+        const v = validateReading({ tg3602: f.a.value, tg3603: f.b.value });
+        if (!v.ok) return void (errEl.textContent = `PP-601${p} เวลา ${formatTime(s)}: ${v.error}`);
+        jobs.push({
+          id: readingId(p, s),
+          pump: p,
+          slotTime: s,
+          shiftId: shiftId,
+          tg3602: v.tg3602,
+          tg3603: v.tg3603,
+          note: ex?.note ?? '',
+          recordedBy: by.slice(0, 40),
+        });
+      }
+    }
+
+    if (jobs.length === 0 && voidJobs.length === 0) {
+      return void (errEl.textContent = 'ยังไม่ได้กรอกค่าใดๆ ในกะนี้');
+    }
+
+    const results = await Promise.all([
+      ...jobs.map((j) => repo.saveReading(j)),
+      ...voidJobs.map((v) => repo.voidReading(v.id, by)),
+    ]);
+
+    const parts = [];
+    if (jobs.length > 0) parts.push(`บันทึก ${jobs.length} รายการ`);
+    if (voidJobs.length > 0) parts.push(`ยกเลิก ${voidJobs.length} รายการ`);
+    toast(`กะ ${formatTime(slots[0])}–${formatTime(slots[slots.length - 1])}: ${parts.join(', ')} แล้ว`, results.includes('pending') ? 'warn' : 'ok');
+  }
+
+  async function copyBatchLine() {
+    const slots = shiftSlots(shiftId);
+    const messages = [];
+    for (const s of slots) {
+      const rows = readings.filter((r) => r.slotTime === s && !r.voided);
+      if (rows.length > 0) messages.push(formatLineMessage(s, rows));
+    }
+    if (messages.length === 0) return void toast('ยังไม่มีข้อมูลที่บันทึกในกะนี้ — กดบันทึกก่อน', 'warn');
+    const ok = await copyText(messages.join('\n\n---\n\n'));
+    toast(ok ? 'คัดลอกข้อความ LINE ทั้งกะแล้ว' : 'คัดลอกไม่สำเร็จ', ok ? 'ok' : 'error');
+  }
+
   // ---------- ข้อมูลสด ----------
   function watch() {
     unwatch();
-    const range = shiftRange(shiftOf(slot));
+    const range = shiftRange(shiftId);
     unwatch = repo.watchReadings(range.start, range.end, (rows) => {
       readings = rows;
       renderShift();
-      // ฟอร์มสร้างใหม่เฉพาะเมื่อชุด pump เปลี่ยน ไม่งั้นทับสิ่งที่กำลังพิมพ์
-      const want = PUMPS.filter((p) => recordablePumps(store.get('status')).includes(p) || existing(p)).join('');
-      if (want !== formBox.dataset.pumps) {
-        formBox.dataset.pumps = want;
-        renderForm();
-      } else prefill();
+      if (entryMode === 'single') {
+        const want = PUMPS.filter((p) => recordablePumps(store.get('status')).includes(p) || existing(p)).join('');
+        if (want !== formBox.dataset.pumps) {
+          formBox.dataset.pumps = want;
+          renderForm();
+        } else prefill();
+      } else {
+        renderBatch();
+      }
     });
   }
 
   function renderAll() {
     renderStatus();
     renderShift();
-    formBox.dataset.pumps = PUMPS.filter((p) => recordablePumps(store.get('status')).includes(p) || existing(p)).join('');
-    renderForm();
+    if (entryMode === 'single') {
+      formBox.dataset.pumps = PUMPS.filter((p) => recordablePumps(store.get('status')).includes(p) || existing(p)).join('');
+      renderForm();
+    } else {
+      formBox.dataset.pumps = '';
+      renderBatch();
+    }
   }
 
   subs.push(
@@ -337,7 +605,7 @@ export function mount(root, { repo, store }) {
       formBox.dataset.pumps = '';
       watch();
     }),
-    store.on('limits', () => renderForm()),
+    store.on('limits', () => renderAll()),
   );
   renderAll();
   watch();

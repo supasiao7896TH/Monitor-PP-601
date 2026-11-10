@@ -192,8 +192,17 @@ export function createLocalRepo() {
       return 'synced';
     },
     async voidReading(id, by) {
-      if (db.readings[id]) db.readings[id] = { ...db.readings[id], voided: true, voidedBy: by, updatedAt: Date.now() };
-      persist();
+      if (db.readings[id]) {
+        db.readings[id] = { ...db.readings[id], voided: true, voidedBy: by, updatedAt: Date.now() };
+        persist();
+        try {
+          fetch('/api/readings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(db.readings[id]),
+          }).catch(() => {});
+        } catch {}
+      }
       return 'synced';
     },
     watchStatus: (cb) => watch(() => db.status, cb),

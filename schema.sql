@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS readings (
   diff REAL,
   note TEXT DEFAULT '',
   recordedBy TEXT DEFAULT 'LINE Bot',
+  voided INTEGER DEFAULT 0,
+  voidedBy TEXT DEFAULT '',
   updatedAt INTEGER NOT NULL
 );
 

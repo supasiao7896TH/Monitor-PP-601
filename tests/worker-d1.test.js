@@ -206,4 +206,103 @@ describe('Cloudflare D1 Integration & Sync', () => {
     expect(getJson.events.length).toBe(1);
     expect(getJson.events[0].id).toBe('ev_123');
   });
+
+  it('saveToD1: บันทึกสถานะ voided และ voidedBy ลง D1 ได้ถูกต้อง', async () => {
+    const executed = [];
+    const mockDb = {
+      prepare: vi.fn((sql) => ({
+        bind: vi.fn((...args) => ({ sql, args })),
+      })),
+      batch: vi.fn(async (statements) => {
+        executed.push(...statements);
+        return statements.map(() => ({ success: true }));
+      }),
+    };
+
+    const voidReading = [
+      {
+        id: '2026-10-28_22-00_A',
+        pump: 'A',
+        slotTime: 1793209200000,
+        shiftId: '2026-10-28-N',
+        tg3602: 125,
+        tg3603: 77,
+        diff: 48,
+        note: 'ยกเลิก',
+        recordedBy: 'Supasit',
+        voided: true,
+        voidedBy: 'Supasit',
+      },
+    ];
+
+    await saveToD1(voidReading, mockDb);
+    expect(executed.length).toBe(1);
+    expect(executed[0].args[0]).toBe('2026-10-28_22-00_A');
+    expect(executed[0].args[9]).toBe(1); // voided = 1
+    expect(executed[0].args[10]).toBe('Supasit'); // voidedBy
+  });
+
+  it('repo-local voidReading: ปรับสถานะ voided: true และส่ง POST ซิงก์ขึ้น D1', async () => {
+    let postedBody = null;
+    global.fetch = vi.fn().mockImplementation((url, opts) => {
+      if (url === '/api/readings' && opts?.method === 'POST') {
+        postedBody = JSON.parse(opts.body);
+        return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, readings: [] }) });
+    });
+
+    const repo = createLocalRepo();
+    await repo.saveReading({
+      id: 'test_reading_1',
+      pump: 'A',
+      slotTime: 1793209200000,
+      tg3602: 180,
+      tg3603: 200,
+    });
+
+    await repo.voidReading('test_reading_1', 'พี่ A');
+
+    const readings = await repo.getReadings(1793200000000, 1793300000000);
+    const target = readings.find((r) => r.id === 'test_reading_1');
+    expect(target).toBeDefined();
+    expect(target.voided).toBe(true);
+    expect(target.voidedBy).toBe('พี่ A');
+    expect(postedBody).toBeDefined();
+    expect(postedBody.id).toBe('test_reading_1');
+    expect(postedBody.voided).toBe(true);
+  });
+
+  it('repo-local syncD1: รักษาสถานะ voided: true ไม่ให้ข้อมูลที่ยกเลิกฟื้นคืนชีพ', async () => {
+    const mockApiResponse = {
+      ok: true,
+      count: 1,
+      readings: [
+        {
+          id: 'test_voided_row',
+          pump: 'B',
+          slotTime: 1793209200000,
+          shiftId: '2026-10-28-N',
+          tg3602: 150,
+          tg3603: 160,
+          voided: 1,
+          voidedBy: 'พี่ A',
+          updatedAt: 1793209250000,
+        },
+      ],
+    };
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockApiResponse,
+    });
+
+    const repo = createLocalRepo();
+    await repo.syncD1();
+
+    const readings = await repo.getReadings(1793200000000, 1793300000000);
+    expect(readings.length).toBe(1);
+    expect(readings[0].id).toBe('test_voided_row');
+    expect(readings[0].voided).toBe(true);
+  });
 });

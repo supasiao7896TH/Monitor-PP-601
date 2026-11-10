@@ -1,15 +1,17 @@
 # HANDOFF.md — PP-601 Monitor (ส่งต่องาน มือถือ → PC บ้าน / PC เครื่องใหม่)
 
-อัปเดต: 2026-11-10 (PP-601B Dual-Source Logging & OSIsoft PI Auto-Pull) · Branch: `main` · Unit Tests 94 ข้อผ่าน 100%
+อัปเดต: 2026-11-10 (Auto-Void on Clear & Shift Batch Grid Entry) · Branch: `main` · Unit Tests 97 ข้อผ่าน 100%
 
 ## สถานะ
 | ส่วน | สถานะ |
 |---|---|
+| Auto-Void on Clear & Cloud Sync | ✅ เสร็จสมบูรณ์ เมื่อลบค่าออกและกดบันทึก ระบบจะ Auto-Void และซิงก์สถานะ `voided` ขึ้น D1 ทันที หน้าจอมอนิเตอร์ตัดค่าออก Real-time |
+| Shift Batch Grid Entry (กรอกทั้งกะ) | ✅ เพิ่มโหมด "📋 กรอกทั้งกะ" พร้อมปุ่มเลื่อนกะ ‹ › ย้อนหลังได้อิสระไม่จำกัด กรอกรวดเดียว 4-8 ค่าแบบ Excel แล้วเซฟครั้งเดียว |
 | PP-601B Dual-Source & PI Auto-Pull | ✅ เสร็จสมบูรณ์ ดึงค่า `TI-2610B` จาก PI `\\gcmppisvr\1-pTA.2M.1TI2610B.PV` ลง Excel Col F & D1 อัตโนมัติ 100% + F/O ส่งค่าเดี่ยวทาง LINE/เว็บได้โดยไม่บล็อก |
 | หน้าจอ Dashboard สำหรับ PC (Control Room Widescreen) | ✅ เสร็จ 3-Column Header Grid + ตาราง Full-Width + กราฟแนวโน้มเต็มจอ + **Auto-Polling ทุก 60 วินาที** (อัปเดตเองไม่ง้อเมาส์) |
 | Web Bundle Optimization | ✅ **ลดขนาด Bundle จาก 838 kB เหลือ 214 kB (-74%)** ด้วย Dynamic Import Firebase |
 | กราฟความละเอียดสูง (Dual Y-Axis, Dynamic Zoom, 320px) | ✅ เสร็จ กราฟ Widescreen บน PC พร้อมปุ่มเลือก 24 ชม. (8 รอบ) / 48 ชม. / 7 วัน + แสดงค่าล่าสุด |
-| Unit Tests (Vitest) | ✅ **94 ข้อผ่าน 100%** (เทสต์คลุม shift-logic, line-parser, import-excel, worker-d1) |
+| Unit Tests (Vitest) | ✅ **97 ข้อผ่าน 100%** (เพิ่ม 3 เทสต์ใหม่สำหรับ D1 voided sync & local-repo) |
 | Cloudflare D1 Database (`pp601-db`) | ✅ ครบ 3 ตาราง: `readings`, `app_state` (status/limits), และ `events` (ไทม์ไลน์สลับปั๊ม/งานล้าง) ซิงก์ข้ามเครื่อง 100% |
 | LINE Bot Webhook & Interactive Commands | ✅ รองรับบันทึกอุณหภูมิ + **คำสั่งพิเศษ `status`, `สรุป`, `help`** ตอบสถานะปั๊ม 3 ตัวทันทีใน LINE |
 | ซิงก์อัตโนมัติ LINE ➔ D1 ➔ หน้าเว็บ | ✅ เสร็จสมบูรณ์ เมื่อ F/O ส่งใน LINE บอทเซฟลง D1 และหน้าเว็บดึงมาวาดกราฟอัตโนมัติ |

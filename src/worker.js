@@ -344,6 +344,13 @@ export async function ensureSchema(db) {
       return;
     }
     const { results } = await stmt.all();
+    const voidedCol = results?.find((c) => c.name === 'voided');
+    if (!voidedCol && typeof db.exec === 'function') {
+      try {
+        await db.exec('ALTER TABLE readings ADD COLUMN voided INTEGER DEFAULT 0;');
+        await db.exec("ALTER TABLE readings ADD COLUMN voidedBy TEXT DEFAULT '';");
+      } catch {}
+    }
     const tg3603Col = results?.find((c) => c.name === 'tg3603');
     if (tg3603Col && tg3603Col.notnull === 1) {
       if (typeof db.exec === 'function') {
@@ -381,8 +388,8 @@ export async function saveToD1(readings, db) {
   if (!db || !readings || readings.length === 0) return;
   const stmt = db.prepare(`
     INSERT INTO readings (
-      id, pump, slotTime, shiftId, tg3602, tg3603, diff, note, recordedBy, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, pump, slotTime, shiftId, tg3602, tg3603, diff, note, recordedBy, voided, voidedBy, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       tg3602 = COALESCE(excluded.tg3602, readings.tg3602),
       tg3603 = COALESCE(excluded.tg3603, readings.tg3603),
@@ -393,6 +400,8 @@ export async function saveToD1(readings, db) {
       END,
       note = CASE WHEN excluded.note != '' THEN excluded.note ELSE readings.note END,
       recordedBy = CASE WHEN excluded.recordedBy != '' THEN excluded.recordedBy ELSE readings.recordedBy END,
+      voided = excluded.voided,
+      voidedBy = excluded.voidedBy,
       updatedAt = excluded.updatedAt
   `);
 
@@ -407,7 +416,9 @@ export async function saveToD1(readings, db) {
       r.diff != null ? Number(r.diff) : null,
       r.note || '',
       r.recordedBy || 'LINE Bot',
-      Date.now()
+      r.voided ? 1 : 0,
+      r.voidedBy || '',
+      Number(r.updatedAt || Date.now())
     )
   );
 
