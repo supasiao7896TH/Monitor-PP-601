@@ -20,6 +20,7 @@
 | Deploy Cloudflare Workers | ✅ Deploy เวอร์ชันใหม่สำเร็จแล้วที่ `https://monitor-pp-601.supasiao.workers.dev` (Version ID: `a45b202a...`) |
 | Excel Hyperlink Shortcut | ✅ สูตร `=HYPERLINK("https://monitor-pp-601.supasiao.workers.dev", "🌐 เปิดระบบ Monitor PP-601")` สำหรับเปิด Web App จากในชีต |
 | Industrial Skill Documentation | ✅ สรุปและถอดองค์ความรู้เป็น Skill `line-bot-edge-sync` พร้อมสำเนาไว้ที่ `docs/skills/line-bot-edge-sync.md` |
+| DCS & PI AF SDK Automation Guide | ✅ บันทึกคู่มือและแม่แบบโค้ดมาตรฐานสำหรับดึงค่า DCS ผ่าน PI AF SDK ไว้ที่ [`docs/dcs-pi-monitoring-guide.md`](file:///C:/Users/26007294/A(i)CODER2025TH/Monitor-PP-601/docs/dcs-pi-monitoring-guide.md) สำหรับใช้ต่อยอดโปรเจกต์มอนิเตอร์ในอนาคต |
 
 ---
 
