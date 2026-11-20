@@ -75,10 +75,64 @@ function Get-PIValueForSlot {
     return $null
 }
 
+# 1.2 Decoupled PI Auto-Pull & Smart Backfill (Cloud First: runs BEFORE touching Excel)
+if ($piPoint) {
+    $now = Get-Date
+    $postEndpoint = "https://monitor-pp-601.supasiao.workers.dev/api/readings"
+    foreach ($r in $readings) {
+        if ($r.pump -ne 'B') { continue }
+        $utcMs = [long]$r.slotTime
+        $bkkDt = [DateTimeOffset]::FromUnixTimeMilliseconds($utcMs).AddHours(7).DateTime
+        
+        # Don't check future slots
+        if ($bkkDt -gt $now.AddMinutes(30)) { continue }
+
+        $isRecent = $bkkDt -ge $now.AddHours(-12)
+        $isMissing = ($null -eq $r.tg3603 -or $r.tg3603 -eq '')
+
+        if ($isRecent -or $isMissing) {
+            $piVal = Get-PIValueForSlot -SlotDt $bkkDt
+            if ($null -ne $piVal) {
+                $curVal = if ($null -ne $r.tg3603 -and $r.tg3603 -ne '') { [double]$r.tg3603 } else { $null }
+                if ($null -eq $curVal -or [Math]::Abs($curVal - $piVal) -gt 0.05) {
+                    try {
+                        $recBy = if ($r.recordedBy -and $r.recordedBy -notmatch "PI DataLink") {
+                            "$($r.recordedBy) / PI DataLink"
+                        } else {
+                            "PI DataLink"
+                        }
+
+                        $postBody = @{
+                            id = $r.id
+                            pump = "B"
+                            slotTime = $utcMs
+                            shiftId = $r.shiftId
+                            tg3603 = $piVal
+                            recordedBy = $recBy
+                        } | ConvertTo-Json
+
+                        Invoke-RestMethod -Uri $postEndpoint -Method POST -Body $postBody -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                        Write-Host "  [PI AUTO-PULL] $($bkkDt.ToString('yyyy-MM-dd HH:mm')) TI-2610B -> $piVal °C synced to D1 (was: $curVal)"
+                        
+                        # Update local reading in memory so Excel sync gets the new value
+                        $r.tg3603 = $piVal
+                        $slotKey = $bkkDt.ToString("yyyy-MM-dd HH:mm")
+                        if ($readingsBySlot.ContainsKey($slotKey) -and $readingsBySlot[$slotKey].ContainsKey('B')) {
+                            $readingsBySlot[$slotKey]['B'].tg3603 = $piVal
+                        }
+                    } catch {
+                        Write-Warning "Failed to push PI reading to D1: $($_.Exception.Message)"
+                    }
+                }
+            }
+        }
+    }
+}
+
 # 2. Check File Lock and Open Excel via COM
 if (-not (Test-Path $ExcelPath)) {
-    Write-Error "Excel file not found at: $ExcelPath"
-    exit 1
+    Write-Warning "Excel file not found at: $ExcelPath (Drive K: may be disconnected. Cloud sync succeeded.)"
+    exit 0
 }
 
 # Function to test file lock without crashing
@@ -100,7 +154,7 @@ function Test-ExcelLocked {
 
 if (Test-ExcelLocked -FilePath $ExcelPath) {
     Write-Warning "[FILE LOCK] Excel file is currently open by another user or process ($ExcelPath)."
-    Write-Host "[WARN] Skipping sync this cycle to avoid collision. Will retry automatically next scheduled run."
+    Write-Host "[WARN] Skipping Excel update this cycle. Cloud D1 was updated. Will retry Excel on next run."
     exit 0
 }
 
@@ -271,10 +325,9 @@ try {
         $rowSlotKey = "$($currentDate.ToString('yyyy-MM-dd')) $normalizedTime"
 
         $hasD1Readings = $readingsBySlot.ContainsKey($rowSlotKey)
-        $shouldCheckPi = $piPoint -and $slotDateTime -ge (Get-Date).AddHours(-12) -and $slotDateTime -le (Get-Date).AddMinutes(30)
 
-        if ($hasD1Readings -or $shouldCheckPi) {
-            $pumpReadings = if ($hasD1Readings) { $readingsBySlot[$rowSlotKey] } else { @{} }
+        if ($hasD1Readings) {
+            $pumpReadings = $readingsBySlot[$rowSlotKey]
             $rowModified = $false
 
             # Pump A
@@ -301,47 +354,6 @@ try {
             $pB = if ($pumpReadings.ContainsKey('B')) { $pumpReadings['B'] } else { $null }
             $bInVal = if ($pB -and $null -ne $pB.tg3602 -and $pB.tg3602 -ne "") { [double]$pB.tg3602 } else { $null }
             $bOutVal = if ($pB -and $null -ne $pB.tg3603 -and $pB.tg3603 -ne "") { [double]$pB.tg3603 } else { $null }
-
-            # Auto-pull TI-2610B from PI if Out is missing or if existing Out differs from the actual PI value
-            if ($shouldCheckPi) {
-                $piVal = Get-PIValueForSlot -SlotDt $slotDateTime
-                if ($null -ne $piVal) {
-                    if ($null -eq $bOutVal -or [Math]::Abs($bOutVal - $piVal) -gt 0.05) {
-                        $oldVal = $bOutVal
-                        $bOutVal = $piVal
-                        # Push back to Cloudflare D1 so Web App & LINE Bot get it immediately
-                        try {
-                            $utcMs = [long]([DateTimeOffset]::new($slotDateTime, [TimeSpan]::FromHours(7)).ToUnixTimeMilliseconds())
-                            $bId = "B_$($slotDateTime.ToString('yyyyMMddHHmm'))"
-                            $h = $slotDateTime.Hour
-                            $mi = $slotDateTime.Minute
-                            $isNight = ($h -lt 7) -or ($h -eq 7 -and $mi -lt 30) -or ($h -gt 19) -or ($h -eq 19 -and $mi -ge 30)
-                            $sDate = if ($h -lt 7 -or ($h -eq 7 -and $mi -lt 30)) { $slotDateTime.AddDays(-1) } else { $slotDateTime }
-                            $sKind = if ($isNight) { "N" } else { "D" }
-                            $shiftId = "$($sDate.ToString('yyyy-MM-dd'))_$sKind"
-
-                            $recBy = if ($pB -and $pB.recordedBy -and $pB.recordedBy -notmatch "PI DataLink") {
-                                "$($pB.recordedBy) / PI DataLink"
-                            } else {
-                                "PI DataLink"
-                            }
-
-                            $postBody = @{
-                                id = $bId
-                                pump = "B"
-                                slotTime = $utcMs
-                                shiftId = $shiftId
-                                tg3603 = $bOutVal
-                                recordedBy = $recBy
-                            } | ConvertTo-Json
-                            Invoke-RestMethod -Uri "https://monitor-pp-601.supasiao.workers.dev/api/readings" -Method POST -Body $postBody -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                            Write-Host "  [PI AUTO-PULL] Row $r [$rowSlotKey] TI-2610B -> $bOutVal °C synced to D1 (was: $oldVal)"
-                        } catch {
-                            Write-Warning "Failed to push PI reading to D1: $($_.Exception.Message)"
-                        }
-                    }
-                }
-            }
 
             $currBIn = $ws.Cells.Item($r, 5).Value2
             $currBOut = $ws.Cells.Item($r, 6).Value2

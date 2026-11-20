@@ -1,6 +1,6 @@
 # HANDOFF.md — PP-601 Monitor (ส่งต่องาน มือถือ → PC บ้าน / PC เครื่องใหม่)
 
-อัปเดต: 2026-11-11 (Zero-Flash Silent Task Runner & Batch Grid) · Branch: `main` · Unit Tests 97 ข้อผ่าน 100%
+อัปเดต: 2026-11-20 (Decoupled Cloud-First PI Auto-Pull & Smart Backfill) · Branch: `main` · Unit Tests 97 ข้อผ่าน 100%
 
 ## สถานะ
 | ส่วน | สถานะ |
@@ -8,7 +8,7 @@
 | Zero-Flash Background Sync Runner | ✅ เสร็จสมบูรณ์ เปลี่ยน Action ของ Task Scheduler เป็น `run-silent.vbs` (wscript.exe) รันเบื้องหลังทุก 5 นาที เงียบสนิท 100% ไม่มีหน้าจอดำโผล่มากวนใจ |
 | Auto-Void on Clear & Cloud Sync | ✅ เสร็จสมบูรณ์ เมื่อลบค่าออกและกดบันทึก ระบบจะ Auto-Void และซิงก์สถานะ `voided` ขึ้น D1 ทันที หน้าจอมอนิเตอร์ตัดค่าออก Real-time |
 | Shift Batch Grid Entry (กรอกทั้งกะ) | ✅ เพิ่มโหมด "📋 กรอกทั้งกะ" พร้อมปุ่มเลื่อนกะ ‹ › ย้อนหลังได้อิสระไม่จำกัด กรอกรวดเดียว 4-8 ค่าแบบ Excel แล้วเซฟครั้งเดียว |
-| PP-601B Dual-Source & PI Auto-Pull | ✅ เสร็จสมบูรณ์ ดึงค่า `TI-2610B` จาก PI `\\gcmppisvr\1-pTA.2M.1TI2610B.PV` ลง Excel Col F & D1 อัตโนมัติ 100% + F/O ส่งค่าเดี่ยวทาง LINE/เว็บได้โดยไม่บล็อก |
+| PP-601B Dual-Source & PI Auto-Pull | ✅ **Decoupled Cloud-First & Smart Backfill** ดึงค่า `TI-2610B` จาก PI `\\gcmppisvr\1-pTA.2M.1TI2610B.PV` ขึ้น D1 ก่อนเสมอแม้ Excel ติด Lock + Smart Backfill อัตโนมัติทุก Slot ที่ค่าว่าง |
 | หน้าจอ Dashboard สำหรับ PC (Control Room Widescreen) | ✅ เสร็จ 3-Column Header Grid + ตาราง Full-Width + กราฟแนวโน้มเต็มจอ + **Auto-Polling ทุก 60 วินาที** (อัปเดตเองไม่ง้อเมาส์) |
 | Web Bundle Optimization | ✅ **ลดขนาด Bundle จาก 838 kB เหลือ 214 kB (-74%)** ด้วย Dynamic Import Firebase |
 | กราฟความละเอียดสูง (Dual Y-Axis, Dynamic Zoom, 320px) | ✅ เสร็จ กราฟ Widescreen บน PC พร้อมปุ่มเลือก 24 ชม. (8 รอบ) / 48 ชม. / 7 วัน + แสดงค่าล่าสุด |
