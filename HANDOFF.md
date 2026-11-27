@@ -1,11 +1,36 @@
 # HANDOFF.md — PP-601 Monitor (ส่งต่องาน มือถือ → PC บ้าน / PC เครื่องใหม่)
 
-อัปเดต: 2026-11-20 (Decoupled Cloud-First PI Auto-Pull & Smart Backfill) · Branch: `main` · Unit Tests 97 ข้อผ่าน 100%
+อัปเดต: 2026-11-27 (แก้ sync เงียบ/PI หาย/Excel ไม่เติม + Per-User Task สำหรับ PC ใช้ร่วม) · Branch: `main` · Unit Tests 97 ข้อผ่าน 100%
+
+## 🆕 2026-11-27 — แก้ปัญหา "หน้าเว็บไม่มีค่า B · Excel ไม่เติม · หน้าต่างกระพริบ"
+**Root cause:** โฟลเดอร์เก่า `C:\PP601-Monitor\` (สคริปต์ 4 พ.ย. ไม่มี PI auto-pull) ยังค้างอยู่ และ `Setup-PP601-For-My-Login.bat`/`setup-user.ps1` เลือกโฟลเดอร์นี้ก่อน → กด setup เมื่อ 2026-11-26 18:41 ได้ task แบบเก่า (`powershell -WindowStyle Hidden` → กระพริบทุก 5 นาที, TI-2610B ไม่ขึ้น D1) + Auto-Extend ใน `sync-excel.ps1` ตัวใหม่ crash (`$null` → COM) ทำให้ Excel ไม่ถูกเขียนเมื่อ template เหลือ <7 วัน
+
+| Commit | สิ่งที่แก้ |
+|---|---|
+| `af7a6c9` | setup ใช้ `C:\ProgramData\PP601-Monitor` อย่างเดียว + copy ทับทุกครั้ง · Auto-Extend ใช้ `ClearContents()` · แก้ `"A${newRow}:M${newRow}"` · แถวที่งอกใหม่เว้น Diff ว่าง (ไม่ใช่ `=C-D` ที่โชว์ 0) |
+| `57cdec5` | `CLAUDE.md` Domain: PP-601B in = TG-2602B (LINE), out = TI-2610B (PI) — ปั๊มคนละ type, Diff ติดลบเป็นปกติ ห้ามแก้สูตร |
+| `4bc7f9f` | **Per-User Task** `PP601-Excel-Sync (<username>)` (logon + ทุก 5 นาที) ผ่าน helper `scripts/pp601-task.ps1` + mutex `Global\PP601-Excel-Sync` กันหลาย session เปิด Excel พร้อมกัน |
+| `c65a493` | `scripts/Sync-PP601-Excel.bat` ใน ProgramData สำหรับ Hyperlink จาก Excel logbook |
+
+**ทำบนเครื่อง Control Room แล้ว:** rename `C:\PP601-Monitor` → `C:\PP601-Monitor.old` (ยังไม่ลบ) · ลบ task ชื่อเก่า `PP601-Excel-Sync` · backfill TI-2610B 2026-11-26 19:00 → 2026-11-27 07:00 ขึ้น D1 + Excel · Template งอกถึง 2026-12-31 (Row 1034)
+
+**Hyperlink สำหรับ Excel logbook (ใช้ได้เฉพาะ PC Control Room):**
+- `=HYPERLINK("C:\ProgramData\PP601-Monitor\Setup-PP601-For-My-Login.bat", "⚙️ Setup PP-601 Auto-Sync (กดครั้งเดียวต่อ user · เฉพาะ PC Control Room)")`
+- `=HYPERLINK("C:\ProgramData\PP601-Monitor\Sync-PP601-Excel.bat", "🔄 Sync PP-601 → Excel ทันที (เฉพาะ PC Control Room)")`
+- `=HYPERLINK("C:\ProgramData\PP601-Monitor\", "📁 เปิดโฟลเดอร์ PP-601 Monitor (เฉพาะ PC Control Room)")`
+
+### ⏳ งานค้าง
+- [ ] B/M คนอื่น (26007490, 26007495, 26009291) กด `Setup-PP601-For-My-Login.bat` คนละ 1 ครั้ง แล้วกด `Sync-PP601-Excel.bat` เช็คว่าขึ้น `Connected to PI Server` และเข้า K: ได้ (ยังไม่ยืนยันสิทธิ์ PI/K: ของแต่ละคน)
+- [ ] `/code-review 069a0fc..c65a493` ใน **session ใหม่** (ยังไม่ผ่านชั้นที่ 2 ตามกติกา — push ไปก่อนตามคำสั่งพี่ A)
+- [ ] ข้อจำกัด: ไม่มีใคร login = ไม่มี sync (พอมีคน login จะ backfill เอง) · Excel Bridge (Plant Log Analyzer) ยัง auto-start เฉพาะ 26007294
+- [ ] ลบ `C:\PP601-Monitor.old` เมื่อมั่นใจว่าไม่ต้องใช้แล้ว
+- [ ] ตรวจหน้างาน: ตำแหน่ง TG-2602B เทียบ TI-2610B บน P&ID ของ PP-601B (Diff ติดลบ) — ห้ามแก้สูตรจนกว่าพี่ A สั่ง
 
 ## สถานะ
 | ส่วน | สถานะ |
 |---|---|
-| Zero-Flash Background Sync Runner | ✅ เสร็จสมบูรณ์ เปลี่ยน Action ของ Task Scheduler เป็น `run-silent.vbs` (wscript.exe) รันเบื้องหลังทุก 5 นาที เงียบสนิท 100% ไม่มีหน้าจอดำโผล่มากวนใจ |
+| Zero-Flash Background Sync Runner | ✅ Task Scheduler รัน `run-silent.vbs` (wscript.exe) ทุก 5 นาที เงียบสนิท — ⚠️ ถ้ากลับมากระพริบ ให้เช็ค Action ของ task ว่าไม่ใช่ `powershell.exe` ตรงๆ (แก้ 2026-11-27) |
+| Multi-User Shared PC (Per-User Task) | ✅ 2026-11-27 แต่ละ login มี task ของตัวเอง `PP601-Excel-Sync (<username>)` + mutex กันชน — ตอนนี้ setup แล้วเฉพาะ 26007294 |
 | Auto-Void on Clear & Cloud Sync | ✅ เสร็จสมบูรณ์ เมื่อลบค่าออกและกดบันทึก ระบบจะ Auto-Void และซิงก์สถานะ `voided` ขึ้น D1 ทันที หน้าจอมอนิเตอร์ตัดค่าออก Real-time |
 | Shift Batch Grid Entry (กรอกทั้งกะ) | ✅ เพิ่มโหมด "📋 กรอกทั้งกะ" พร้อมปุ่มเลื่อนกะ ‹ › ย้อนหลังได้อิสระไม่จำกัด กรอกรวดเดียว 4-8 ค่าแบบ Excel แล้วเซฟครั้งเดียว |
 | PP-601B Dual-Source & PI Auto-Pull | ✅ **Decoupled Cloud-First & Smart Backfill** ดึงค่า `TI-2610B` จาก PI `\\gcmppisvr\1-pTA.2M.1TI2610B.PV` ขึ้น D1 ก่อนเสมอแม้ Excel ติด Lock + Smart Backfill อัตโนมัติทุก Slot ที่ค่าว่าง |
