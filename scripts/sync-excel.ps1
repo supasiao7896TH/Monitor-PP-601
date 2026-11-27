@@ -7,6 +7,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Exit codes (read by Sync-PP601-Excel.bat; the 5-min task ignores them):
+#   0 = Excel synced (or already up to date)
+#   1 = failed (API error, unexpected exception)
+#   2 = skipped Excel this cycle (another sync running, workbook open/locked, K: not reachable) - D1/PI may still be updated
+
 # Security Guard: Script must only run on Local Drive (C:), never from Network Share (K:, D:\GCMSection, UNC)
 if ($PSScriptRoot -match '^(K:|\\\\|D:\\GCMSection)') {
     Write-Error "SECURITY POLICY VIOLATION: sync-excel.ps1 must NOT be stored or executed from a Network Share. Corporate FSRM blocks scripts on server shares. Please execute from C:\ProgramData\PP601-Monitor."
@@ -29,11 +34,11 @@ try {
     try { $acquired = $script:syncMutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $acquired = $true }
     if (-not $acquired) {
         Write-Host "[SKIP] Another user's sync is running on this PC. Will retry next cycle."
-        exit 0
+        exit 2
     }
 } catch [System.UnauthorizedAccessException] {
     Write-Host "[SKIP] Sync mutex held by another session (no access). Will retry next cycle."
-    exit 0
+    exit 2
 } catch {
     # Never block the sync because of the guard itself; the Excel file-lock check below still protects the workbook
     Write-Warning "Sync mutex unavailable ($($_.Exception.Message)) - continuing without cross-session guard."
@@ -44,7 +49,7 @@ try {
     $res = Invoke-RestMethod -Uri $ApiUrl -Method GET -TimeoutSec 10
     if (-not $res.ok -or -not $res.readings) {
         Write-Warning "API returned no readings or ok=false"
-        exit 0
+        exit 1
     }
     $readings = $res.readings
     Write-Host "Fetched $($readings.Count) readings from Cloudflare D1"
@@ -156,7 +161,7 @@ if ($piPoint) {
 # 2. Check File Lock and Open Excel via COM
 if (-not (Test-Path $ExcelPath)) {
     Write-Warning "Excel file not found at: $ExcelPath (Drive K: may be disconnected. Cloud sync succeeded.)"
-    exit 0
+    exit 2
 }
 
 # Function to test file lock without crashing
@@ -179,7 +184,7 @@ function Test-ExcelLocked {
 if (Test-ExcelLocked -FilePath $ExcelPath) {
     Write-Warning "[FILE LOCK] Excel file is currently open by another user or process ($ExcelPath)."
     Write-Host "[WARN] Skipping Excel update this cycle. Cloud D1 was updated. Will retry Excel on next run."
-    exit 0
+    exit 2
 }
 
 $excel = New-Object -ComObject Excel.Application
@@ -277,10 +282,11 @@ try {
                 $ws.Cells.Item($newRow, 9).Value2 = 70
                 $ws.Cells.Item($newRow, 13).Value2 = 20
 
-                # Col 10, 11, 12: Diff left blank (same as existing template rows). The sync loop writes
-                # =IF(AND(ISNUMBER(..)),..,"") once a reading arrives - a plain =C-D shows 0 on empty rows
-                # and plots a false 0 on the chart.
-                $ws.Range("J${newRow}:L${newRow}").ClearContents() | Out-Null
+                # Col 10, 11, 12: guarded Diff formulas - blank until both values exist (a plain =C-D shows a
+                # false 0 on the chart), and still computes Diff for rows that F/O type in by hand.
+                $ws.Cells.Item($newRow, 10).Formula = "=IF(AND(ISNUMBER(C$newRow),ISNUMBER(D$newRow)),C$newRow-D$newRow,`"`")"
+                $ws.Cells.Item($newRow, 11).Formula = "=IF(AND(ISNUMBER(E$newRow),ISNUMBER(F$newRow)),E$newRow-F$newRow,`"`")"
+                $ws.Cells.Item($newRow, 12).Formula = "=IF(AND(ISNUMBER(G$newRow),ISNUMBER(H$newRow)),G$newRow-H$newRow,`"`")"
 
                 $newRow++
             }
@@ -442,3 +448,4 @@ try {
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
 }
+exit 0

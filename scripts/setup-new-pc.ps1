@@ -19,13 +19,9 @@ $desktopPath = [Environment]::GetFolderPath("Desktop")
 
 # 1. Ensure Shared Directory in C:\ProgramData
 Write-Host "`n[1/5] Setting up shared folder ($sharedDir)..." -NoNewline
-if (-not (Test-Path $sharedDir)) {
-    New-Item -ItemType Directory -Path $sharedDir -Force | Out-Null
-}
-foreach ($f in "sync-excel.ps1", "run-silent.vbs", "setup-user.ps1", "pp601-task.ps1", "Setup-PP601-For-My-Login.bat", "Sync-PP601-Excel.bat") {
-    Copy-Item (Join-Path $PSScriptRoot $f) (Join-Path $sharedDir $f) -Force
-}
 . (Join-Path $PSScriptRoot "pp601-task.ps1")
+Write-Host ""
+Install-PP601SharedFiles -SourceDir $PSScriptRoot -SharedDir $sharedDir
 Write-Host " OK! (Accessible by all 4 B/M users)" -ForegroundColor Green
 
 # 2. Check Network Drive K:
@@ -62,15 +58,9 @@ Write-Host "[5/5] Creating Desktop Shortcuts..." -NoNewline
 $batPath = Join-Path $desktopPath "Sync PP-601 Excel.bat"
 $batContent = @"
 @echo off
-title PP-601 Excel Sync
-echo ========================================================
-echo   PP-601 Auto-Sync to Excel (Drive K:)
-echo   Cloudflare D1 -> K:\PE1\Daily report PTA1\Monitor temp pump PP-601.xlsx
-echo ========================================================
-powershell -ExecutionPolicy Bypass -File "$syncScript"
-echo.
-echo Sync completed.
-timeout /t 5
+rem Thin wrapper: the shared bat reports OK, NOT SYNCED or FAILED by exit code.
+rem (The old inline version had an unescaped redirect that wrote a junk file onto the K: share.)
+call "$sharedDir\Sync-PP601-Excel.bat"
 "@
 Set-Content -Path $batPath -Value $batContent -Encoding ASCII
 

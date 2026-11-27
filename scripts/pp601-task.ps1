@@ -8,6 +8,32 @@
 
 $script:PP601LegacyTaskName = "PP601-Excel-Sync"
 
+# Single source of truth for what gets installed into C:\ProgramData\PP601-Monitor
+$script:PP601SharedFiles = @(
+    "sync-excel.ps1", "run-silent.vbs", "pp601-task.ps1",
+    "setup-user.ps1", "Setup-PP601-For-My-Login.bat", "Sync-PP601-Excel.bat"
+)
+
+function Install-PP601SharedFiles {
+    # Copies only files whose content differs. Files in ProgramData are owned by whoever installed them and
+    # other users only get Read/Execute - on purpose: never widen to Modify, or any user could edit a script
+    # that runs under every other user's task. So a copy failure is a warning, not a fatal error.
+    param([Parameter(Mandatory)][string]$SourceDir, [Parameter(Mandatory)][string]$SharedDir)
+    if (-not (Test-Path $SharedDir)) { New-Item -ItemType Directory -Path $SharedDir -Force | Out-Null }
+    foreach ($f in $script:PP601SharedFiles) {
+        $src = Join-Path $SourceDir $f
+        $dst = Join-Path $SharedDir $f
+        if (-not (Test-Path $src)) { continue }
+        if ((Test-Path $dst) -and (Get-FileHash $src).Hash -eq (Get-FileHash $dst).Hash) { continue }
+        try {
+            Copy-Item $src $dst -Force
+            Write-Host "  Updated $f" -ForegroundColor DarkGray
+        } catch {
+            Write-Host "  [WARN] Cannot update $dst ($($_.Exception.Message)) - ask the user who installed it to re-run setup from the repo." -ForegroundColor Yellow
+        }
+    }
+}
+
 function Get-PP601TaskName {
     param([string]$UserName = $env:USERNAME)
     return "PP601-Excel-Sync ($UserName)"
@@ -27,8 +53,9 @@ function Register-PP601UserTask {
         (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5))
     )
     $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
-        -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
+    # No MultipleInstances/ExecutionTimeLimit: run-silent.vbs returns immediately, so the task never "runs long".
+    # Overlapping runs (same user or other sessions) are prevented by the Global\PP601-Excel-Sync mutex in sync-excel.ps1.
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $triggers -Principal $principal -Settings $settings `
         -Description "Auto-sync PP-601 readings (Cloudflare D1 + PI TI-2610B) into K:\PE1 Excel for $me (Zero-Flash)" -Force | Out-Null
