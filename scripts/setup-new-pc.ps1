@@ -22,8 +22,10 @@ Write-Host "`n[1/5] Setting up shared folder ($sharedDir)..." -NoNewline
 if (-not (Test-Path $sharedDir)) {
     New-Item -ItemType Directory -Path $sharedDir -Force | Out-Null
 }
-Copy-Item (Join-Path $PSScriptRoot "sync-excel.ps1") $syncScript -Force
-Copy-Item (Join-Path $PSScriptRoot "run-silent.vbs") (Join-Path $sharedDir "run-silent.vbs") -Force
+foreach ($f in "sync-excel.ps1", "run-silent.vbs", "setup-user.ps1", "pp601-task.ps1", "Setup-PP601-For-My-Login.bat") {
+    Copy-Item (Join-Path $PSScriptRoot $f) (Join-Path $sharedDir $f) -Force
+}
+. (Join-Path $PSScriptRoot "pp601-task.ps1")
 Write-Host " OK! (Accessible by all 4 B/M users)" -ForegroundColor Green
 
 # 2. Check Network Drive K:
@@ -46,14 +48,10 @@ try {
 }
 
 # 4. Register Scheduled Task (every 5 minutes, Zero-Flash Silent)
-Write-Host "[4/5] Registering Windows Scheduled Task 'PP601-Excel-Sync'..." -NoNewline
+Write-Host "[4/5] Registering Windows Scheduled Task '$(Get-PP601TaskName)'..."
 try {
-    $vbsPath = Join-Path $sharedDir "run-silent.vbs"
-    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbsPath`"" -WorkingDirectory $sharedDir
-    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName "PP601-Excel-Sync" -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report (Multi-User Shared, Every 5 minutes, Zero-Flash)" -Force | Out-Null
-    Write-Host " OK! (Runs silently every 5 minutes in background)" -ForegroundColor Green
+    Register-PP601UserTask -SharedDir $sharedDir | Out-Null
+    Write-Host "  OK! (this user only - other B/M users run C:\ProgramData\PP601-Monitor\Setup-PP601-For-My-Login.bat once)" -ForegroundColor Green
 } catch {
     Write-Host " FAILED ($($_.Exception.Message))" -ForegroundColor Red
 }

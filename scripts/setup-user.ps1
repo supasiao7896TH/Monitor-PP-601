@@ -11,7 +11,8 @@ if (Test-Path "C:\PP601-Monitor") {
     Write-Host "[WARN] Legacy folder C:\PP601-Monitor found - ignored. Rename/delete it to avoid confusion." -ForegroundColor Yellow
 }
 $syncScript = Join-Path $sharedDir "sync-excel.ps1"
-$taskName = "PP601-Excel-Sync"
+. (Join-Path $PSScriptRoot "pp601-task.ps1")
+$taskName = Get-PP601TaskName
 
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host "   PP-601 Monitor: Setup for User [$username]" -ForegroundColor Cyan
@@ -21,7 +22,7 @@ Write-Host "========================================================" -Foregroun
 if (-not (Test-Path $sharedDir)) { New-Item -ItemType Directory -Path $sharedDir -Force | Out-Null }
 $runningFromShared = (Resolve-Path $PSScriptRoot).Path.TrimEnd('\') -ieq $sharedDir
 if (-not $runningFromShared) {
-    foreach ($f in "sync-excel.ps1", "run-silent.vbs", "setup-user.ps1") {
+    foreach ($f in "sync-excel.ps1", "run-silent.vbs", "setup-user.ps1", "pp601-task.ps1", "Setup-PP601-For-My-Login.bat") {
         $src = Join-Path $PSScriptRoot $f
         if (Test-Path $src) { Copy-Item $src (Join-Path $sharedDir $f) -Force }
     }
@@ -35,11 +36,9 @@ if (-not (Test-Path $syncScript) -or -not (Test-Path $vbsPath)) {
 # 2. Register Scheduled Task (Every 5 minutes, Zero-Flash Silent)
 Write-Host "`n[1/3] Registering Task Scheduler '$taskName' (Every 5 mins, Zero-Flash)..." -NoNewline
 try {
-    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$vbsPath`"" -WorkingDirectory $sharedDir
-    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Auto-sync PP-601 temp readings from Cloudflare D1 into K:\PE1 Excel report ($username, Zero-Flash)" -Force | Out-Null
-    Write-Host " OK!" -ForegroundColor Green
+    Write-Host ""
+    Register-PP601UserTask -SharedDir $sharedDir | Out-Null
+    Write-Host "  OK! (runs at logon + every 5 mins while $username is logged on)" -ForegroundColor Green
 } catch {
     Write-Host " FAILED ($($_.Exception.Message))" -ForegroundColor Red
 }

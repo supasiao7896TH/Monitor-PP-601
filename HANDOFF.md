@@ -41,7 +41,8 @@
    * คลิกขวาที่ไฟล์ [`scripts/setup-new-pc.ps1`](file:///C:/Users/26007294/A(i)CODER2025TH/Monitior%20PP-601/scripts/setup-new-pc.ps1) แล้วเลือก **"Run with PowerShell"**
    * สคริปต์จะ:
      * ตรวจสอบการเชื่อมต่อไดรฟ์ `K:` และ Cloudflare API
-     * ลงทะเบียน Windows Task Scheduler (`PP601-Excel-Sync`) ให้รันอัตโนมัติทุก 5 นาที (ทันใจก่อนออกกะ 07:30 / 19:30)
+     * ลงทะเบียน Windows Task Scheduler **รายคน** (`PP601-Excel-Sync (<username>)`) รันตอน login + ทุก 5 นาที (ทันใจก่อนออกกะ 07:30 / 19:30)
+     * **PC ใช้ร่วมหลาย login:** B/M แต่ละคนต้องกด `C:\ProgramData\PP601-Monitor\Setup-PP601-For-My-Login.bat` คนละ 1 ครั้ง (task รันเฉพาะตอนเจ้าของ login อยู่ · หลาย session รันพร้อมกันกันด้วย mutex `Global\PP601-Excel-Sync`) — แก้ 2026-11-27 จากเดิมชื่อ task เดียวกันทุกคน ใครกด setup คนสุดท้ายได้ใช้คนเดียว
      * สร้าง Shortcut `Sync PP-601 Excel.bat` บนหน้าจอ Desktop ของเครื่องใหม่ให้ทันที!
 3. **เสร็จสิ้น 100%!** ระบบจะกลับมาทำงานอัตโนมัติเหมือนเครื่องเดิมทุกประการค่ะ
 

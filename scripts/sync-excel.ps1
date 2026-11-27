@@ -13,7 +13,31 @@ if ($PSScriptRoot -match '^(K:|\\\\|D:\\GCMSection)') {
     exit 1
 }
 
-Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Starting PP-601 Excel Sync..."
+Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Starting PP-601 Excel Sync ($env:USERNAME)..."
+
+# Single-run guard across ALL logged-on users (shared B/M PC, one task per user): only one sync at a time,
+# so two sessions never open the K: workbook via COM simultaneously. Global\ = machine-wide namespace;
+# the ACL lets every local user open a mutex created by someone else. Released automatically on exit.
+$script:syncMutex = $null
+try {
+    $sec = New-Object System.Security.AccessControl.MutexSecurity
+    $sid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinUsersSid, $null)
+    $sec.AddAccessRule((New-Object System.Security.AccessControl.MutexAccessRule($sid, 'Synchronize, Modify', 'Allow')))
+    $createdNew = $false
+    $script:syncMutex = New-Object System.Threading.Mutex($false, "Global\PP601-Excel-Sync", [ref]$createdNew, $sec)
+    $acquired = $false
+    try { $acquired = $script:syncMutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $acquired = $true }
+    if (-not $acquired) {
+        Write-Host "[SKIP] Another user's sync is running on this PC. Will retry next cycle."
+        exit 0
+    }
+} catch [System.UnauthorizedAccessException] {
+    Write-Host "[SKIP] Sync mutex held by another session (no access). Will retry next cycle."
+    exit 0
+} catch {
+    # Never block the sync because of the guard itself; the Excel file-lock check below still protects the workbook
+    Write-Warning "Sync mutex unavailable ($($_.Exception.Message)) - continuing without cross-session guard."
+}
 
 # 1. Fetch readings from Cloudflare D1
 try {
