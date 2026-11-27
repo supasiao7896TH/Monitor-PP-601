@@ -11,6 +11,9 @@
 | `57cdec5` | `CLAUDE.md` Domain: PP-601B in = TG-2602B (LINE), out = TI-2610B (PI) — ปั๊มคนละ type, Diff ติดลบเป็นปกติ ห้ามแก้สูตร |
 | `4bc7f9f` | **Per-User Task** `PP601-Excel-Sync (<username>)` (logon + ทุก 5 นาที) ผ่าน helper `scripts/pp601-task.ps1` + mutex `Global\PP601-Excel-Sync` กันหลาย session เปิด Excel พร้อมกัน |
 | `c65a493` | `scripts/Sync-PP601-Excel.bat` ใน ProgramData สำหรับ Hyperlink จาก Excel logbook |
+| `62e6bcb` | แก้ตามผล `/code-review 069a0fc..c65a493` (session ใหม่): exit code 0/1/2 + bat แสดง `[OK]`/`[NOT SYNCED]`/`[FAILED]` · Auto-Extend เขียนสูตร Diff `=IF(AND(ISNUMBER..)),..,"")` (เติมให้แถว 787–1034 ในไฟล์จริงแล้ว) · `Install-PP601SharedFiles` รวมรายชื่อไฟล์จุดเดียว copy เฉพาะที่เปลี่ยน · bat บน Desktop เรียก bat กลาง (แก้ `echo … -> K:\…` ที่ redirect สร้างไฟล์ขยะบน K:) |
+
+**ผล code review (8 ข้อ):** แก้แล้ว 7 ข้อ · ข้อ "AtLogOn ต้องใช้ admin" **ไม่จริง** (พิสูจน์ด้วย account non-admin ของ 26007294) · **ปฏิเสธ** ข้อเสนอให้ `BUILTIN\Users` สิทธิ์ Modify บน `C:\ProgramData\PP601-Monitor` เพราะ user ใดก็แก้สคริปต์ที่รันในชื่อ user อื่นได้ (คงไว้ที่ Users = RX) · ไม่เปลี่ยน `run-silent.vbs` เป็นรอผล เพราะ mutex กันรันซ้อนอยู่แล้ว
 
 **ทำบนเครื่อง Control Room แล้ว:** rename `C:\PP601-Monitor` → `C:\PP601-Monitor.old` (ยังไม่ลบ) · ลบ task ชื่อเก่า `PP601-Excel-Sync` · backfill TI-2610B 2026-11-26 19:00 → 2026-11-27 07:00 ขึ้น D1 + Excel · Template งอกถึง 2026-12-31 (Row 1034)
 
@@ -21,7 +24,9 @@
 
 ### ⏳ งานค้าง
 - [ ] B/M คนอื่น (26007490, 26007495, 26009291) กด `Setup-PP601-For-My-Login.bat` คนละ 1 ครั้ง แล้วกด `Sync-PP601-Excel.bat` เช็คว่าขึ้น `Connected to PI Server` และเข้า K: ได้ (ยังไม่ยืนยันสิทธิ์ PI/K: ของแต่ละคน)
-- [ ] `/code-review 069a0fc..c65a493` ใน **session ใหม่** (ยังไม่ผ่านชั้นที่ 2 ตามกติกา — push ไปก่อนตามคำสั่งพี่ A)
+- [x] `/code-review 069a0fc..c65a493` ใน session ใหม่ — เสร็จ 2026-11-27 แก้ใน `62e6bcb`
+- [ ] (ไม่บังคับ) `/code-review 411d8ef..62e6bcb` ใน session ใหม่ เพื่อตรวจรอบแก้
+- [ ] B/M คนอื่นทดสอบจริง: setup ผ่านด้วย account ตัวเอง (ส่วน copy ไฟล์/สิทธิ์ยังไม่ได้ทดสอบกับ user อื่น)
 - [ ] ข้อจำกัด: ไม่มีใคร login = ไม่มี sync (พอมีคน login จะ backfill เอง) · Excel Bridge (Plant Log Analyzer) ยัง auto-start เฉพาะ 26007294
 - [ ] ลบ `C:\PP601-Monitor.old` เมื่อมั่นใจว่าไม่ต้องใช้แล้ว
 - [ ] ตรวจหน้างาน: ตำแหน่ง TG-2602B เทียบ TI-2610B บน P&ID ของ PP-601B (Diff ติดลบ) — ห้ามแก้สูตรจนกว่าพี่ A สั่ง
