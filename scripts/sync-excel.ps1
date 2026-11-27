@@ -230,7 +230,7 @@ try {
                 # Copy format from previous row to retain border/font/alignment
                 try {
                     $ws.Range("A$($newRow-1):M$($newRow-1)").Copy() | Out-Null
-                    $ws.Range("A$newRow:M$newRow").PasteSpecial(-4122) | Out-Null # -4122 = xlPasteFormats
+                    $ws.Range("A${newRow}:M${newRow}").PasteSpecial(-4122) | Out-Null # -4122 = xlPasteFormats
                 } catch {}
 
                 # Col 1: Date on 01:00 slot
@@ -238,7 +238,8 @@ try {
                     $ws.Cells.Item($newRow, 1).NumberFormat = "dd/mm/yyyy"
                     $ws.Cells.Item($newRow, 1).Value2 = $currDate.ToOADate()
                 } else {
-                    $ws.Cells.Item($newRow, 1).Value2 = $null
+                    # NOTE: assigning $null to a COM property throws NullReferenceException in PowerShell - use ClearContents()
+                    $ws.Cells.Item($newRow, 1).ClearContents() | Out-Null
                 }
 
                 # Col 2: Time
@@ -246,21 +247,16 @@ try {
                 $ws.Cells.Item($newRow, 2).Value2 = [double]$hour / 24.0
 
                 # Clear temperature cells for safety
-                $ws.Cells.Item($newRow, 3).Value2 = $null
-                $ws.Cells.Item($newRow, 4).Value2 = $null
-                $ws.Cells.Item($newRow, 5).Value2 = $null
-                $ws.Cells.Item($newRow, 6).Value2 = $null
-                $ws.Cells.Item($newRow, 7).Value2 = $null
-                $ws.Cells.Item($newRow, 8).Value2 = $null
+                $ws.Range("C${newRow}:H${newRow}").ClearContents() | Out-Null
 
                 # Col 9 & 13: Limits
                 $ws.Cells.Item($newRow, 9).Value2 = 70
                 $ws.Cells.Item($newRow, 13).Value2 = 20
 
-                # Col 10, 11, 12: Diff Formulas
-                $ws.Cells.Item($newRow, 10).Formula = "=C$newRow-D$newRow"
-                $ws.Cells.Item($newRow, 11).Formula = "=E$newRow-F$newRow"
-                $ws.Cells.Item($newRow, 12).Formula = "=G$newRow-H$newRow"
+                # Col 10, 11, 12: Diff left blank (same as existing template rows). The sync loop writes
+                # =IF(AND(ISNUMBER(..)),..,"") once a reading arrives - a plain =C-D shows 0 on empty rows
+                # and plots a false 0 on the chart.
+                $ws.Range("J${newRow}:L${newRow}").ClearContents() | Out-Null
 
                 $newRow++
             }

@@ -4,7 +4,12 @@ $ErrorActionPreference = "Stop"
 
 $username = $env:USERNAME
 $desktopPath = [Environment]::GetFolderPath("Desktop")
-$sharedDir = if (Test-Path "C:\PP601-Monitor\sync-excel.ps1") { "C:\PP601-Monitor" } else { "C:\ProgramData\PP601-Monitor" }
+# Always use ProgramData. The legacy C:\PP601-Monitor folder held a stale sync-excel.ps1 (no PI auto-pull);
+# preferring it re-registered the old task (flashing console + missing TI-2610B) on 2026-11-26.
+$sharedDir = "C:\ProgramData\PP601-Monitor"
+if (Test-Path "C:\PP601-Monitor") {
+    Write-Host "[WARN] Legacy folder C:\PP601-Monitor found - ignored. Rename/delete it to avoid confusion." -ForegroundColor Yellow
+}
 $syncScript = Join-Path $sharedDir "sync-excel.ps1"
 $taskName = "PP601-Excel-Sync"
 
@@ -12,19 +17,19 @@ Write-Host "========================================================" -Foregroun
 Write-Host "   PP-601 Monitor: Setup for User [$username]" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 
-# 1. Check sync script existence
-if (-not (Test-Path $syncScript)) {
-    if (Test-Path (Join-Path $PSScriptRoot "sync-excel.ps1")) {
-        if (-not (Test-Path $sharedDir)) { New-Item -ItemType Directory -Path $sharedDir -Force | Out-Null }
-        Copy-Item (Join-Path $PSScriptRoot "sync-excel.ps1") $syncScript -Force
-    } else {
-        Write-Error "Cannot find sync-excel.ps1 in $sharedDir or script folder."
-        exit 1
+# 1. Install/refresh scripts in $sharedDir (always overwrite when run from the repo, so a stale copy never survives)
+if (-not (Test-Path $sharedDir)) { New-Item -ItemType Directory -Path $sharedDir -Force | Out-Null }
+$runningFromShared = (Resolve-Path $PSScriptRoot).Path.TrimEnd('\') -ieq $sharedDir
+if (-not $runningFromShared) {
+    foreach ($f in "sync-excel.ps1", "run-silent.vbs", "setup-user.ps1") {
+        $src = Join-Path $PSScriptRoot $f
+        if (Test-Path $src) { Copy-Item $src (Join-Path $sharedDir $f) -Force }
     }
 }
 $vbsPath = Join-Path $sharedDir "run-silent.vbs"
-if (Test-Path (Join-Path $PSScriptRoot "run-silent.vbs")) {
-    Copy-Item (Join-Path $PSScriptRoot "run-silent.vbs") $vbsPath -Force
+if (-not (Test-Path $syncScript) -or -not (Test-Path $vbsPath)) {
+    Write-Error "Cannot find sync-excel.ps1 / run-silent.vbs in $sharedDir. Run this setup from the repo 'scripts' folder."
+    exit 1
 }
 
 # 2. Register Scheduled Task (Every 5 minutes, Zero-Flash Silent)
