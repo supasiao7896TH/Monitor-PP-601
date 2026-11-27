@@ -22,7 +22,7 @@ Write-Host "========================================================" -Foregroun
 if (-not (Test-Path $sharedDir)) { New-Item -ItemType Directory -Path $sharedDir -Force | Out-Null }
 $runningFromShared = (Resolve-Path $PSScriptRoot).Path.TrimEnd('\') -ieq $sharedDir
 if (-not $runningFromShared) {
-    foreach ($f in "sync-excel.ps1", "run-silent.vbs", "setup-user.ps1", "pp601-task.ps1", "Setup-PP601-For-My-Login.bat") {
+    foreach ($f in "sync-excel.ps1", "run-silent.vbs", "setup-user.ps1", "pp601-task.ps1", "Setup-PP601-For-My-Login.bat", "Sync-PP601-Excel.bat") {
         $src = Join-Path $PSScriptRoot $f
         if (Test-Path $src) { Copy-Item $src (Join-Path $sharedDir $f) -Force }
     }

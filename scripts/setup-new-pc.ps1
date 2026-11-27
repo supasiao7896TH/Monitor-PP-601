@@ -22,7 +22,7 @@ Write-Host "`n[1/5] Setting up shared folder ($sharedDir)..." -NoNewline
 if (-not (Test-Path $sharedDir)) {
     New-Item -ItemType Directory -Path $sharedDir -Force | Out-Null
 }
-foreach ($f in "sync-excel.ps1", "run-silent.vbs", "setup-user.ps1", "pp601-task.ps1", "Setup-PP601-For-My-Login.bat") {
+foreach ($f in "sync-excel.ps1", "run-silent.vbs", "setup-user.ps1", "pp601-task.ps1", "Setup-PP601-For-My-Login.bat", "Sync-PP601-Excel.bat") {
     Copy-Item (Join-Path $PSScriptRoot $f) (Join-Path $sharedDir $f) -Force
 }
 . (Join-Path $PSScriptRoot "pp601-task.ps1")
