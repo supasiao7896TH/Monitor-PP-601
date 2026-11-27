@@ -47,11 +47,12 @@ try {
 # 1. Fetch readings from Cloudflare D1
 try {
     $res = Invoke-RestMethod -Uri $ApiUrl -Method GET -TimeoutSec 10
-    if (-not $res.ok -or -not $res.readings) {
-        Write-Warning "API returned no readings or ok=false"
+    if (-not $res.ok) {
+        Write-Warning "API returned ok=false"
         exit 1
     }
-    $readings = $res.readings
+    $readings = @($res.readings | Where-Object { $_ })   # @($null) would be a 1-item array
+    if ($readings.Count -eq 0) { Write-Warning "API is up but returned no readings - nothing to sync." }
     Write-Host "Fetched $($readings.Count) readings from Cloudflare D1"
 } catch {
     Write-Error "Failed to fetch from Cloudflare API: $($_.Exception.Message)"
@@ -282,11 +283,10 @@ try {
                 $ws.Cells.Item($newRow, 9).Value2 = 70
                 $ws.Cells.Item($newRow, 13).Value2 = 20
 
-                # Col 10, 11, 12: guarded Diff formulas - blank until both values exist (a plain =C-D shows a
-                # false 0 on the chart), and still computes Diff for rows that F/O type in by hand.
-                $ws.Cells.Item($newRow, 10).Formula = "=IF(AND(ISNUMBER(C$newRow),ISNUMBER(D$newRow)),C$newRow-D$newRow,`"`")"
-                $ws.Cells.Item($newRow, 11).Formula = "=IF(AND(ISNUMBER(E$newRow),ISNUMBER(F$newRow)),E$newRow-F$newRow,`"`")"
-                $ws.Cells.Item($newRow, 12).Formula = "=IF(AND(ISNUMBER(G$newRow),ISNUMBER(H$newRow)),G$newRow-H$newRow,`"`")"
+                # Col 10, 11, 12: Diff left truly blank (same as the original template rows). Any formula - even
+                # =IF(..,"") - returns text that a line chart plots as 0; real blanks honour "Not plotted".
+                # The sync loop writes the guarded Diff formula once a reading arrives.
+                $ws.Range("J${newRow}:L${newRow}").ClearContents() | Out-Null
 
                 $newRow++
             }
@@ -299,6 +299,59 @@ try {
         $wb.Save()
         Write-Host "[AUTO-EXTEND] Extended successfully up to Row $lastRow ($($targetEndDate.ToString('yyyy-MM-dd')))."
     }
+
+    # -------------------------------------------------------------
+    # Chart range self-heal: auto-extend adds rows but the charts' series stopped at the old template end
+    # (e.g. $786), so new months never appeared on the charts. Move every series' range END that equals the
+    # charts' common last row up to the sheet's last template row. Range starts and other refs are untouched.
+    # -------------------------------------------------------------
+    $chartsChanged = $false
+
+    # Trailing empty rows must hold NO formulas in Diff J:L before charts cover them: =IF(..,"") returns text
+    # that a line chart plots as 0. Walk up from the last row while C:H are empty and clear any J:L content.
+    # (Bulk-read via Range.Value2/.Formula = 2 COM calls instead of thousands.)
+    $cleanupOk = $true
+    try {
+        $vals = $ws.Range("C1:H$lastRow").Value2
+        $fmls = $ws.Range("J1:L$lastRow").Formula
+        $clearedDiff = 0
+        for ($cr = $lastRow; $cr -ge 6; $cr--) {
+            $hasData = $false
+            for ($cc = 1; $cc -le 6; $cc++) { if ($null -ne $vals[$cr, $cc] -and "$($vals[$cr, $cc])" -ne "") { $hasData = $true; break } }
+            if ($hasData) { break }
+            if ("$($fmls[$cr,1])$($fmls[$cr,2])$($fmls[$cr,3])" -ne "") {
+                $ws.Range("J${cr}:L${cr}").ClearContents() | Out-Null
+                $clearedDiff++
+            }
+        }
+        if ($clearedDiff -gt 0) {
+            $chartsChanged = $true
+            Write-Host "[CLEANUP] Cleared Diff formulas on $clearedDiff empty future row(s) (prevents false 0 on charts)."
+        }
+    } catch {
+        $cleanupOk = $false
+        Write-Warning "Diff cleanup failed: $($_.Exception.Message) - chart ranges NOT extended this run."
+    }
+
+    if ($cleanupOk) { try {
+        $seriesList = @()
+        foreach ($co in $ws.ChartObjects()) { foreach ($s in $co.Chart.SeriesCollection()) { $seriesList += $s } }
+        $endRows = foreach ($s in $seriesList) {
+            foreach ($m in [regex]::Matches($s.Formula, ':\$[A-Z]{1,3}\$(\d+)')) { [int]$m.Groups[1].Value }
+        }
+        if ($endRows) {
+            $chartEnd = ($endRows | Measure-Object -Maximum).Maximum
+            if ($chartEnd -lt $lastRow) {
+                foreach ($s in $seriesList) {
+                    $newF = [regex]::Replace($s.Formula, "(:\$[A-Z]{1,3}\$)$chartEnd(?!\d)", "`${1}$lastRow")
+                    if ($newF -ne $s.Formula) { $s.Formula = $newF; $chartsChanged = $true }
+                }
+                if ($chartsChanged) { Write-Host "[CHART] Extended chart ranges from row $chartEnd to row $lastRow." }
+            }
+        }
+    } catch {
+        Write-Warning "Chart range update skipped: $($_.Exception.Message)"
+    } }
 
     $currentDate = $null
 
@@ -429,7 +482,7 @@ try {
         }
     }
 
-    if ($updatedRows -gt 0) {
+    if ($updatedRows -gt 0 -or $chartsChanged) {
         $wb.Save()
         Write-Host "Successfully updated $updatedRows row(s) and saved Excel."
     } else {

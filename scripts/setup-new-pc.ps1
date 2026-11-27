@@ -13,7 +13,6 @@ Write-Host "   PP-601 Monitor: 1-Click Multi-User Setup for PC" -ForegroundColor
 Write-Host "========================================================" -ForegroundColor Cyan
 
 $sharedDir = "C:\ProgramData\PP601-Monitor"
-$syncScript = Join-Path $sharedDir "sync-excel.ps1"
 $excelPath = "K:\PE1\Daily report PTA1\Monitor temp pump PP-601.xlsx"
 $desktopPath = [Environment]::GetFolderPath("Desktop")
 
@@ -21,7 +20,12 @@ $desktopPath = [Environment]::GetFolderPath("Desktop")
 Write-Host "`n[1/5] Setting up shared folder ($sharedDir)..." -NoNewline
 . (Join-Path $PSScriptRoot "pp601-task.ps1")
 Write-Host ""
-Install-PP601SharedFiles -SourceDir $PSScriptRoot -SharedDir $sharedDir
+try {
+    Install-PP601SharedFiles -SourceDir $PSScriptRoot -SharedDir $sharedDir
+} catch {
+    Write-Host "`n[FAILED] $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
 Write-Host " OK! (Accessible by all 4 B/M users)" -ForegroundColor Green
 
 # 2. Check Network Drive K:

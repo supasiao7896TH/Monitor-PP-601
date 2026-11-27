@@ -15,22 +15,42 @@ $script:PP601SharedFiles = @(
 )
 
 function Install-PP601SharedFiles {
-    # Copies only files whose content differs. Files in ProgramData are owned by whoever installed them and
-    # other users only get Read/Execute - on purpose: never widen to Modify, or any user could edit a script
-    # that runs under every other user's task. So a copy failure is a warning, not a fatal error.
+    # All-or-nothing install of the files whose content differs. Files in ProgramData are owned by whoever
+    # installed them and other users only get Read/Execute - on purpose: never widen to Modify, or any user
+    # could edit a script that runs under every other user's task. If ANY changed file is not writable we copy
+    # NOTHING and throw, so the folder never ends up with a new .bat calling an old .ps1 (mixed versions).
     param([Parameter(Mandatory)][string]$SourceDir, [Parameter(Mandatory)][string]$SharedDir)
     if (-not (Test-Path $SharedDir)) { New-Item -ItemType Directory -Path $SharedDir -Force | Out-Null }
+
+    $pending = @()
     foreach ($f in $script:PP601SharedFiles) {
         $src = Join-Path $SourceDir $f
         $dst = Join-Path $SharedDir $f
-        if (-not (Test-Path $src)) { continue }
+        if (-not (Test-Path $src)) { throw "Source file missing: $src" }
         if ((Test-Path $dst) -and (Get-FileHash $src).Hash -eq (Get-FileHash $dst).Hash) { continue }
+        $pending += [pscustomobject]@{ Name = $f; Src = $src; Dst = $dst }
+    }
+    if ($pending.Count -eq 0) { Write-Host "  Shared files already up to date." -ForegroundColor DarkGray; return }
+
+    # 1) Pre-flight: every target must be writable (open existing files for write without changing them)
+    $blocked = @()
+    foreach ($p in $pending) {
         try {
-            Copy-Item $src $dst -Force
-            Write-Host "  Updated $f" -ForegroundColor DarkGray
-        } catch {
-            Write-Host "  [WARN] Cannot update $dst ($($_.Exception.Message)) - ask the user who installed it to re-run setup from the repo." -ForegroundColor Yellow
-        }
+            if (Test-Path $p.Dst) {
+                $fs = [System.IO.File]::Open($p.Dst, 'Open', 'Write', 'ReadWrite'); $fs.Close()
+            } else {
+                $probe = "$($p.Dst).probe"; [System.IO.File]::WriteAllText($probe, ""); Remove-Item $probe -Force
+            }
+        } catch { $blocked += "$($p.Name) ($($_.Exception.Message))" }
+    }
+    if ($blocked.Count -gt 0) {
+        throw "Cannot update $SharedDir - no files were changed. Not writable: $($blocked -join '; '). Ask the user who installed it to re-run setup from the repo."
+    }
+
+    # 2) Copy
+    foreach ($p in $pending) {
+        Copy-Item $p.Src $p.Dst -Force
+        Write-Host "  Updated $($p.Name)" -ForegroundColor DarkGray
     }
 }
 

@@ -21,7 +21,12 @@ Write-Host "========================================================" -Foregroun
 # 1. Install/refresh scripts in $sharedDir (always overwrite when run from the repo, so a stale copy never survives)
 $runningFromShared = (Resolve-Path $PSScriptRoot).Path.TrimEnd('\') -ieq $sharedDir
 if (-not $runningFromShared) {
-    Install-PP601SharedFiles -SourceDir $PSScriptRoot -SharedDir $sharedDir
+    try {
+        Install-PP601SharedFiles -SourceDir $PSScriptRoot -SharedDir $sharedDir
+    } catch {
+        Write-Host "`n[FAILED] $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
 }
 $vbsPath = Join-Path $sharedDir "run-silent.vbs"
 if (-not (Test-Path $syncScript) -or -not (Test-Path $vbsPath)) {

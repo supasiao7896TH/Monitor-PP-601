@@ -15,9 +15,10 @@ if "%RC%"=="0" (
     exit /b 0
 )
 if "%RC%"=="2" (
-    echo   [NOT SYNCED] Excel was NOT updated this time - see the reason above.
-    echo   - If "Monitor temp pump PP-601.xlsx" is open: close it, then click again.
-    echo   - Web App / D1 values are already updated.
+    echo   [NOT SYNCED] Excel was NOT updated this time - see the reason above:
+    echo   - [FILE LOCK]  "Monitor temp pump PP-601.xlsx" is open: close it, then click again.
+    echo   - [SKIP]       another user's sync is running: wait 1 minute, then click again.
+    echo   - not found    drive K: is not reachable: check the network / K: drive.
 ) else (
     echo   [FAILED] Sync failed ^(code %RC%^). Check the network / K: drive and try again.
 )
